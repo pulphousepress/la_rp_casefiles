@@ -1,0 +1,2 @@
+-- server.lua
+-- Optional: Reserved for future expansion (billing, paychecks, logging)

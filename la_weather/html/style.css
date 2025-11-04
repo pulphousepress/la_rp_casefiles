@@ -1,0 +1,32 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Courier New', monospace;
+    background: transparent;
+}
+
+#weatherBox {
+    position: absolute;
+    top: 5%;
+    left: 5%;
+    width: 260px;
+    background: rgba(20, 20, 20, 0.85);
+    color: #f5f5f5;
+    border: 2px solid #888;
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 14px;
+    line-height: 1.4;
+    box-shadow: 0 0 10px rgba(0,0,0,0.7);
+}
+
+#weatherBox h2 {
+    font-size: 16px;
+    margin: 0 0 10px;
+    text-align: center;
+    color: #ffdd55;
+}
+
+.hidden {
+    display: none;
+}

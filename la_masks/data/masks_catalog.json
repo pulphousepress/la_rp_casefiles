@@ -1,0 +1,10 @@
+[
+  { "id": "smoke_hyena", "label": "Smoke Hyena Mask", "price": 26460, "dlc": "Los Santos Summer Special" },
+  { "id": "stone_hyena", "label": "Stone Hyena Mask", "price": 26895, "dlc": "Los Santos Summer Special" },
+  { "id": "gray_hyena", "label": "Gray Hyena Mask", "price": 27380, "dlc": "Los Santos Summer Special" },
+  { "id": "brown_hyena", "label": "Brown Hyena Mask", "price": 27910, "dlc": "Los Santos Summer Special" },
+  { "id": "gray_mouse", "label": "Gray Mouse Mask", "price": 25700, "dlc": "Los Santos Summer Special" },
+  { "id": "tan_mouse", "label": "Tan Mouse Mask", "price": 25700, "dlc": "Los Santos Summer Special" },
+  { "id": "brown_mouse", "label": "Brown Mouse Mask", "price": 26450, "dlc": "Los Santos Summer Special" },
+  { "id": "white_mouse", "label": "White Mouse Mask", "price": 26450, "dlc": "Los Santos Summer Special" }
+]

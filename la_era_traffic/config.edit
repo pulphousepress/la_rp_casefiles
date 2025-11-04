@@ -1,0 +1,39 @@
+-- config_era.lua
+Config = {}
+
+-- Debug mode
+Config.Debug = true
+
+-- Spawn locations for manual vehicle spawns
+Config.SpawnLocations = {
+    vector3(215.0, -810.0, 30.7),
+    vector3(-500.0, -200.0, 35.0),
+    vector3(123.0, -1500.0, 28.0)
+}
+
+-- Categorized vehicle models
+Config.EraVehicles = {
+    classics = {
+        "glendale", "regina", "stafford", "blade", "broadway", "hustler",
+        "peyote", "tornado", "tornado2", "tornado3", "tornado4",
+        "tornado5", "tornado6", "ztype", "btype", "btype2", "btype3",
+        "mamba", "coquette5", "gt500", "dynasty", "fagaloa", "brigham",
+        "eudora", "ratloader", "hotknife", "hermes", "slamvan", "slamvan2",
+        "coquetteblackfin", "club", "weevil", "issi3", "brioso", "brioso2",
+        "brioso3", "winky", "bodhi2", "kalahari", "dloader", "yosemite3"
+    },
+    service = {
+        "bus", "taxi", "trash", "pbus", "airbus", "coach", "boxville",
+        "boxville2", "boxville3", "boxville4", "boxville5", "benson",
+        "mule", "mule2", "mule3", "mule4", "phantom", "hauler",
+        "packer", "towtruck", "towtruck2", "flatbed", "flatbed2"
+    },
+    custom = {
+        "ford52", "ford53", "willys46", "willys48", "belair", "bmw507",
+        "caddye", "cap58pol", "tbird"
+    }
+}
+
+function getConfig()
+    return Config
+end

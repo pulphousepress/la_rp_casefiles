@@ -1,0 +1,10 @@
+{
+  "smoke_hyena": { "male": { "d": 6, "t": 0 }, "female": { "d": 6, "t": 0 } },
+  "stone_hyena": { "male": { "d": 8, "t": 0 }, "female": { "d": 8, "t": 0 } },
+  "gray_hyena": { "male": { "d": 10, "t": 0 }, "female": { "d": 10, "t": 0 } },
+  "brown_hyena": { "male": { "d": 18, "t": 0 }, "female": { "d": 18, "t": 0 } },
+  "gray_mouse": { "male": { "d": 19, "t": 0 }, "female": { "d": 19, "t": 0 } },
+  "tan_mouse": { "male": { "d": 20, "t": 0 }, "female": { "d": 20, "t": 0 } },
+  "brown_mouse": { "male": { "d": 21, "t": 0 }, "female": { "d": 21, "t": 0 } },
+  "white_mouse": { "male": { "d": 22, "t": 0 }, "female": { "d": 22, "t": 0 } }
+}

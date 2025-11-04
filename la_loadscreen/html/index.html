@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Los Animales: Loadscreen</title>
+
+    <!-- Fonts (ok over HTTPS in CEF) -->
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Special+Elite&display=swap" rel="stylesheet">
+
+    <!-- Theme styles -->
+    <link id="style" rel="stylesheet" href="./main.css" />
+    <link href="./dev.css" rel="stylesheet" />
+
+    <!-- OpenGraph (harmless in NUI, helpful in browser preview) -->
+    <meta property="og:title" content="Los Animales: Loadscreen" />
+    <meta property="og:type" content="website" />
+    <meta property="og:description" content="A 1950s noir loadscreen preview." />
+    <meta name="theme-color" content="#111318" />
+
+    <!-- Script last (module + defer) -->
+    <script src="./js/index.js" type="module" defer></script>
+  </head>
+
+  <body>
+    <!-- Error log (hidden by default) -->
+    <div id="error-wrapper" style="display:none" role="region" aria-label="Error log">
+      <header>
+        <img src="./assets/icons/report.svg" alt="" draggable="false" />
+        <h3>Error log</h3>
+      </header>
+      <p>Please copy and report the errors below.</p>
+      <textarea id="error-log" class="hover" rows="10" cols="50" readonly></textarea>
+    </div>
+
+    <!-- Optional background video / embed (off by default) -->
+    <video id="background-video" autoplay playsinline disablepictureinpicture style="display:none"></video>
+    <iframe
+      id="background-embed"
+      title="Loadscreen embed"
+      frameborder="0"
+      style="pointer-events:none; display:none"
+      sandbox="allow-scripts allow-same-origin"
+      allow="autoplay; fullscreen"
+      referrerpolicy="no-referrer"
+    ></iframe>
+
+    <!-- Hidden audio element controlled by JS -->
+    <!-- Leave off autoplay; JS will handle retries/unlock reliably -->
+    <audio id="background-audio" preload="auto"></audio>
+
+    <div id="overlay" aria-hidden="true"></div>
+
+    <div id="loadscreen-wrapper" role="main">
+      <header>
+        <img id="logo" alt="Los Animales" draggable="false" style="display:none" />
+        <h1 id="server-message" aria-live="polite">Case File 107-B: Los Animales Noir RP</h1>
+      </header>
+
+      <footer>
+        <div id="secondary-bar-wrapper" style="display:none">
+          <p id="loading-action" aria-live="polite">Developing negatives…</p>
+          <progress id="secondary-bar" max="1" value="0" aria-label="Step progress"></progress>
+        </div>
+        <progress id="primary-bar" max="1" value="0" aria-label="Loading progress"></progress>
+      </footer>
+    </div>
+
+    <div id="finishing-wrapper" style="opacity:0">
+      <h1 id="finishing-message">Case Filed.</h1>
+      <p id="log-line">In this town...</p>
+    </div>
+
+    <!-- Audio controls (single instance) -->
+    <div id="audio-controls" class="hover" style="display:none" aria-label="Audio controls">
+      <input id="audio-volume" class="hover" min="0" max="1" step="0.01" type="range" aria-label="Volume" />
+      <button id="audio-mute" class="hover" aria-label="Mute or Unmute">
+        <img id="audio-mute-icon" src="./assets/icons/volume_up.svg" alt="" draggable="false" />
+      </button>
+    </div>
+
+    <!-- Dev UI (optional) -->
+    <button id="dev-open" class="hover" style="display:none">Dev Menu</button>
+    <div id="dev-menu" class="hover" style="display:none" role="dialog" aria-modal="true" aria-label="Developer menu">
+      <header>
+        <h2>Dev Menu</h2>
+        <button id="dev-close" class="hover">Close</button>
+      </header>
+
+      <button id="dev-back" class="hover" style="display:none">Back</button>
+
+      <main id="dev-options">
+        <div class="dev-link" data-section="variables">
+          <h3>Variables</h3><img src="./assets/icons/arrow_forward.svg" alt="" />
+        </div>
+        <div class="dev-link" data-section="config">
+          <h3>Config</h3><img src="./assets/icons/arrow_forward.svg" alt="" />
+        </div>
+        <div class="dev-link" data-section="events">
+          <h3>Events</h3><img src="./assets/icons/arrow_forward.svg" alt="" />
+        </div>
+        <div class="dev-link" data-section="custom-events">
+          <h3>Custom Events</h3><img src="./assets/icons/arrow_forward.svg" alt="" />
+        </div>
+      </main>
+
+      <div id="dev-cfg-wrapper">
+        <h4>Generated Cfg</h4>
+        <textarea id="dev-generated-cfg" class="hover" readonly wrap="off"></textarea>
+      </div>
+    </div>
+
+    <!-- Templates (IDs inside are classes to avoid duplicates) -->
+    <template id="dev-value-template">
+      <div class="dev-value">
+        <h4 class="dev-label"></h4>
+        <input class="hover dev-input" />
+      </div>
+    </template>
+
+    <template id="dev-event-template">
+      <div class="dev-event">
+        <h4 class="dev-event-name"></h4>
+        <button class="hover dev-emit">Emit</button>
+      </div>
+    </template>
+
+    <template id="dev-event-param-template">
+      <div class="dev-event-param">
+        <h5 class="dev-param-label"></h5>
+        <input class="hover dev-param-input" />
+      </div>
+    </template>
+
+    <noscript>This loadscreen requires JavaScript enabled.</noscript>
+  </body>
+</html>

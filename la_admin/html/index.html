@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Los Animales Admin Console</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="console">
+    <!-- Top Bar -->
+    <div id="topbar">
+      <span class="title">📡 Los Animales Admin Console</span>
+      <div class="indicators">
+        <div class="light red"></div>
+        <div class="light green"></div>
+        <div class="light amber flashing">ON AIR</div>
+      </div>
+    </div>
+
+    <main>
+      <!-- Left Panel -->
+      <section id="switchboard">
+        <h2>Switchboard</h2>
+        <button>Patch Through</button>
+        <button>Spectate</button>
+        <button>Message</button>
+        <button>Kick</button>
+      </section>
+
+      <!-- Center Panel -->
+      <section id="world">
+        <h2>World Controls</h2>
+        <button>🌧 Rain</button>
+        <button>⛈ Storm</button>
+        <button>🌫 Fog</button>
+        <button>☁️ Overcast</button>
+        <button>🌆 Dusk</button>
+        <button>🌙 Night</button>
+        <button>❄️ Snow</button>
+        <button>🌨 Blizzard</button>
+      </section>
+
+      <!-- Right Panel -->
+      <section id="logsPanel">
+        <h2>Logs</h2>
+        <div id="logs"></div>
+      </section>
+    </main>
+
+    <!-- Bottom Command Line -->
+    <footer id="commandline">
+      <input id="cmdInput" placeholder="/command here..." />
+      <button id="runCmd">Send</button>
+    </footer>
+  </div>
+  <script src="js/main.js"></script>
+</body>
+</html>
