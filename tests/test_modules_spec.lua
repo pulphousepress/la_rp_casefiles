@@ -1,0 +1,43 @@
+local helper = require('tests.spec_helper')
+
+describe('module initialization', function()
+    it('initializes la_core server', function()
+        local core = require('la_core.server.main')
+        local result = core.init({ Debug = false })
+        assert.is_true(result.ok)
+    end)
+
+    it('initializes la_core client', function()
+        local client = require('la_core.client.main')
+        local result = client.init({ Debug = false })
+        assert.is_true(result.ok)
+    end)
+
+    it('initializes la_npcs server', function()
+        local server = require('la_npcs.server.main')
+        local result = server.init({ seedOnStart = false })
+        assert.is_true(result.ok)
+    end)
+
+    it('initializes la_npcs client', function()
+        local client = require('la_npcs.client.main')
+        local result = client.init({ Enable = false })
+        assert.is_true(result.ok)
+    end)
+
+    it('initializes la_medical client', function()
+        local client = require('la_medical.client')
+        local result = client.init({ respawnDelayMs = 10 })
+        assert.is_true(result.ok)
+    end)
+
+    it('initializes la_weapon_limiter', function()
+        local limiter = require('la_weapon_limiter.la_weapon_limiter')
+        local result = limiter.init({ Mode = 'warn' })
+        assert.is_true(result.ok)
+    end)
+
+    it('does not leak globals', function()
+        assert.has_no.errors(helper.assertNoNewGlobals)
+    end)
+end)

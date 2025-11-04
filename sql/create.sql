@@ -1,0 +1,18 @@
+-- Create tables required by la_npcs
+CREATE TABLE IF NOT EXISTS la_flags (
+    name VARCHAR(64) PRIMARY KEY,
+    value TINYINT(1) NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ped_whitelist (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    model VARCHAR(191) NOT NULL UNIQUE,
+    category VARCHAR(64),
+    label VARCHAR(191),
+    notes TEXT,
+    added_by VARCHAR(64),
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE INDEX IF NOT EXISTS idx_ped_category ON ped_whitelist (category);
