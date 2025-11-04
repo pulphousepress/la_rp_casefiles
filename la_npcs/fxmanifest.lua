@@ -2,8 +2,8 @@ fx_version 'cerulean'
 game 'gta5'
 
 author 'Los Animales RP'
-description 'NPC zone controller with MySQL whitelist + JSON fallback'
-version '1.3.1'
+description 'NPC population controls for Los Animales RP'
+version '1.4.1'
 
 shared_scripts {
     '@ox_lib/init.lua',
@@ -17,8 +17,13 @@ server_scripts {
 }
 
 client_scripts {
-    'config.lua',
-    'client/main.lua'
+    'client/main.lua',
+    'client/init.lua'
+}
+
+server_scripts {
+    'server/main.lua',
+    'server/init.lua'
 }
 
 lua54 'yes'

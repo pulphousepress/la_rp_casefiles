@@ -4,6 +4,13 @@ local NPCClient = {}
 local whitelist = {}
 local modelsByCategory = {}
 local zonePeds = {}
+local initialized = false
+
+local function emitLog(level, message)
+    if Config.Debug then
+        print(string.format("[la_npcs][%s] %s", level, message))
+    end
+end
 
 local function emitLog(level, message)
     if Config.Debug then
@@ -13,7 +20,7 @@ end
 
 local function count(tbl)
     local c = 0
-    for _ in pairs(tbl) do c += 1 end
+    for _ in pairs(tbl) do c = c + 1 end
     return c
 end
 

@@ -7,8 +7,15 @@ version '1.2.0'
 
 shared_script 'config.lua'
 
-client_script 'client/main.lua'
-server_script 'server/main.lua'
+client_scripts {
+    'client/main.lua',
+    'client/init.lua'
+}
+
+server_scripts {
+    'server/main.lua',
+    'server/init.lua'
+}
 
 ui_page 'html/index.html'
 

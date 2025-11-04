@@ -1,0 +1,428 @@
+# Commit: feat: add la_engine scaffold and harden la_admin
+# Justification: Introduces runtime bootstrap layer and eliminates la_admin global leaks.
+# Apply:
+#   git checkout -b audit-fix/la-engine-bootstrap
+#   git apply --index patches/la_engine_bootstrap.patch
+# Revert:
+#   git apply -R --index patches/la_engine_bootstrap.patch
+# Tests:
+#   PATH="$(pwd)/deps/bin:$PATH" luacheck .
+#   PATH="$(pwd)/deps/bin:$PATH" busted
+# Push:
+#   git push origin audit-fix/la-engine-bootstrap
+
+diff --git a/la_admin/client/main.lua b/la_admin/client/main.lua
+index a0adc33..f74117d 100644
+--- a/la_admin/client/main.lua
++++ b/la_admin/client/main.lua
+@@ -1,36 +1,128 @@
++local Config = require('config')
++
++local AdminClient = {}
++local initialized = false
+ local uiVisible = false
+ 
+-local function ToggleUI(state)
+-    uiVisible = state
+-    SetNuiFocus(state, state)
+-    SendNUIMessage({ action = "toggle", show = state })
+-    if Config.Debug then
+-        print("[la_admin] UI=" .. tostring(uiVisible))
++local function mergeConfig(opts)
++    if type(opts) ~= 'table' then return end
++    for key, value in pairs(opts) do
++        Config[key] = value
+     end
+ end
+ 
+--- Toggle with F10
+-RegisterCommand("+la_admin_toggle", function()
+-    ToggleUI(not uiVisible)
+-end, false)
+-RegisterKeyMapping("+la_admin_toggle", "Toggle Admin Console", "keyboard", Config.ToggleKey)
++local function validateOptions(opts)
++    if opts ~= nil and type(opts) ~= 'table' then
++        return false, 'expected table for options'
++    end
++
++    if opts then
++        if opts.ToggleCommand and type(opts.ToggleCommand) ~= 'string' then
++            return false, 'ToggleCommand must be string'
++        end
++
++        if opts.ToggleKey and type(opts.ToggleKey) ~= 'string' then
++            return false, 'ToggleKey must be string'
++        end
+ 
+--- Close NUI
+-RegisterNUICallback("close", function(_, cb)
+-    ToggleUI(false)
+-    cb("ok")
+-end)
++        if opts.logger and type(opts.logger) ~= 'function' then
++            return false, 'logger must be function'
++        end
++    end
++
++    return true
++end
++
++local function emitLog(level, message)
++    local formatted = string.format('[la_admin][%s] %s', level, message)
++    if type(Config.logger) == 'function' then
++        local ok, err = pcall(Config.logger, level, message, formatted)
++        if not ok then
++            print(string.format('[la_admin][warn] logger callback failed: %s', err))
++        end
++    else
++        print(formatted)
++    end
++    return formatted
++end
++
++local function toggleUI(state)
++    uiVisible = state and true or false
++
++    if type(SetNuiFocus) == 'function' then
++        SetNuiFocus(uiVisible, uiVisible)
++    end
++
++    if type(SendNUIMessage) == 'function' then
++        SendNUIMessage({ action = 'toggle', show = uiVisible })
++    end
+ 
+--- Event passthrough
+-RegisterNUICallback("triggerEvent", function(data, cb)
+     if Config.Debug then
+-        print("[la_admin] Event → " .. tostring(data.event))
++        emitLog('debug', 'UI=' .. tostring(uiVisible))
++    end
++end
++
++function AdminClient.init(opts)
++    if initialized then
++        return { ok = true, alreadyInitialized = true }
+     end
+-    TriggerServerEvent("la_admin:consoleEvent", data.event, data.args or {})
+-    cb("ok")
+-end)
+ 
+--- Debug
+-RegisterCommand("la_debug", function()
+-    print("[la_admin] Console Visible=" .. tostring(uiVisible))
+-end, false)
++    local ok, err = validateOptions(opts)
++    if not ok then
++        return { ok = false, err = err }
++    end
++
++    mergeConfig(opts)
++
++    if Config.Enable == false then
++        initialized = true
++        return { ok = true, disabled = true }
++    end
++
++    local commandName = Config.ToggleCommand or '+la_admin_toggle'
++
++    RegisterCommand(commandName, function()
++        toggleUI(not uiVisible)
++    end, false)
++
++    if type(RegisterKeyMapping) == 'function' then
++        RegisterKeyMapping(commandName, 'Toggle Admin Console', 'keyboard', Config.ToggleKey or 'F10')
++    end
++
++    if type(RegisterNUICallback) == 'function' then
++        RegisterNUICallback('close', function(_, cb)
++            toggleUI(false)
++            if cb then cb('ok') end
++        end)
++
++        RegisterNUICallback('triggerEvent', function(data, cb)
++            if type(data) ~= 'table' then
++                emitLog('warn', 'triggerEvent invoked without table payload')
++                if cb then cb('invalid') end
++                return
++            end
++
++            if Config.Debug then
++                emitLog('debug', 'Event → ' .. tostring(data.event))
++            end
++
++            if type(TriggerServerEvent) == 'function' then
++                TriggerServerEvent('la_admin:consoleEvent', data.event, data.args or {})
++            end
++
++            if cb then cb('ok') end
++        end)
++    else
++        emitLog('warn', 'RegisterNUICallback unavailable; NUI events disabled')
++    end
++
++    RegisterCommand('la_debug', function()
++        emitLog('info', 'Console Visible=' .. tostring(uiVisible))
++    end, false)
++
++    initialized = true
++
++    return { ok = true, command = commandName }
++end
++
++return AdminClient
+diff --git a/la_admin/config.lua b/la_admin/config.lua
+index 92876c6..cd6d57e 100644
+--- a/la_admin/config.lua
++++ b/la_admin/config.lua
+@@ -1,4 +1,10 @@
+-Config = {}
+-Config.Enable = true
+-Config.Debug = true
+-Config.ToggleKey = 'F10'
++local Config = {
++    Enable = true,
++    Debug = true,
++    ToggleKey = 'F10',
++    ToggleCommand = '+la_admin_toggle',
++    AllowedEvents = nil,
++    logger = nil
++}
++
++return Config
+diff --git a/la_admin/fxmanifest.lua b/la_admin/fxmanifest.lua
+index 47d15f7..18388d0 100644
+--- a/la_admin/fxmanifest.lua
++++ b/la_admin/fxmanifest.lua
+@@ -7,8 +7,15 @@ version '1.2.0'
+ 
+ shared_script 'config.lua'
+ 
+-client_script 'client/main.lua'
+-server_script 'server/main.lua'
++client_scripts {
++    'client/main.lua',
++    'client/init.lua'
++}
++
++server_scripts {
++    'server/main.lua',
++    'server/init.lua'
++}
+ 
+ ui_page 'html/index.html'
+ 
+diff --git a/la_admin/server/main.lua b/la_admin/server/main.lua
+index 658cb8c..c577f62 100644
+--- a/la_admin/server/main.lua
++++ b/la_admin/server/main.lua
+@@ -1,9 +1,131 @@
+-CreateThread(function()
+-    print("[la_admin] v1.2.0 Dispatch Console loaded.")
+-end)
+-
+-RegisterNetEvent("la_admin:consoleEvent", function(event, args)
+-    local src = source
+-    print(("[la_admin] %s triggered %s %s"):format(GetPlayerName(src), event, json.encode(args)))
+-    -- TODO: Wire into la_weather, la_masks, la_era_vehicles, etc.
+-end)
++local Config = require('config')
++
++local AdminServer = {}
++local initialized = false
++
++local function mergeConfig(opts)
++    if type(opts) ~= 'table' then return end
++    for key, value in pairs(opts) do
++        Config[key] = value
++    end
++end
++
++local function normalizeAllowedEvents(list)
++    if list == nil then return nil end
++    if type(list) ~= 'table' then
++        return false, 'AllowedEvents must be array of strings'
++    end
++
++    local map = {}
++    for _, value in ipairs(list) do
++        if type(value) ~= 'string' then
++            return false, 'AllowedEvents entries must be strings'
++        end
++        map[value] = true
++    end
++
++    return map
++end
++
++local function emitLog(level, message)
++    local formatted = string.format('[la_admin][%s] %s', level, message)
++    if type(Config.logger) == 'function' then
++        local ok, err = pcall(Config.logger, level, message, formatted)
++        if not ok then
++            print(string.format('[la_admin][warn] logger callback failed: %s', err))
++        end
++    else
++        print(formatted)
++    end
++    return formatted
++end
++
++local function validateOptions(opts)
++    if opts ~= nil and type(opts) ~= 'table' then
++        return false, 'expected table for options'
++    end
++
++    if opts then
++        if opts.AllowedEvents then
++            local ok, err = normalizeAllowedEvents(opts.AllowedEvents)
++            if not ok then
++                return false, err
++            end
++        end
++
++        if opts.logger and type(opts.logger) ~= 'function' then
++            return false, 'logger must be function'
++        end
++    end
++
++    return true
++end
++
++function AdminServer.init(opts)
++    if initialized then
++        return { ok = true, alreadyInitialized = true }
++    end
++
++    local ok, err = validateOptions(opts)
++    if not ok then
++        return { ok = false, err = err }
++    end
++
++    mergeConfig(opts)
++
++    local allowedMap
++    if Config.AllowedEvents then
++        local normalized, normalizeErr = normalizeAllowedEvents(Config.AllowedEvents)
++        if not normalized then
++            return { ok = false, err = normalizeErr }
++        end
++        allowedMap = normalized
++    end
++
++    if Config.Enable == false then
++        initialized = true
++        return { ok = true, disabled = true }
++    end
++
++    CreateThread(function()
++        emitLog('info', 'v1.2.0 Dispatch Console loaded.')
++    end)
++
++    RegisterNetEvent('la_admin:consoleEvent', function(event, args)
++        local src = source
++        local eventName = tostring(event or 'undefined')
++
++        if allowedMap and not allowedMap[eventName] then
++            emitLog('warn', ('Blocked console event %s from %s'):format(eventName, tostring(src)))
++            return
++        end
++
++        local payload = {}
++        if type(args) == 'table' then
++            payload = args
++        end
++
++        local actor = 'console'
++        if src and src > 0 and type(GetPlayerName) == 'function' then
++            actor = string.format('%s (%s)', GetPlayerName(src) or 'unknown', src)
++        elseif src ~= nil then
++            actor = tostring(src)
++        end
++
++        emitLog('info', string.format('%s triggered %s %s', actor, eventName, json.encode(payload)))
++
++        if type(TriggerEvent) == 'function' then
++            TriggerEvent('la_admin:forward', {
++                source = src,
++                event = eventName,
++                args = payload
++            })
++        end
++    end)
++
++    initialized = true
++
++    return { ok = true, allowedEvents = allowedMap }
++end
++
++return AdminServer
+diff --git a/tests/spec_helper.lua b/tests/spec_helper.lua
+index f6ecf02..3047314 100644
+--- a/tests/spec_helper.lua
++++ b/tests/spec_helper.lua
+@@ -81,6 +81,8 @@ _G.RegisterNetEvent = function() end
+ allow('RegisterNetEvent')
+ _G.TriggerClientEvent = function() end
+ allow('TriggerClientEvent')
++_G.TriggerServerEvent = function() end
++allow('TriggerServerEvent')
+ _G.AddEventHandler = function() end
+ allow('AddEventHandler')
+ _G.IsPlayerAceAllowed = function() return false end
+@@ -101,6 +103,21 @@ _G.lib = {
+ }
+ allow('lib')
+ 
++_G.SetNuiFocus = function() end
++allow('SetNuiFocus')
++_G.SendNUIMessage = function() end
++allow('SendNUIMessage')
++_G.RegisterNUICallback = function(_, cb)
++    if cb then cb('ok') end
++end
++allow('RegisterNUICallback')
++_G.RegisterKeyMapping = function() end
++allow('RegisterKeyMapping')
++_G.GetPlayerName = function()
++    return 'unit-test-player'
++end
++allow('GetPlayerName')
++
+ _G.exports = {
+     oxmysql = {
+         execute = function(_, _, cb)
+diff --git a/tests/test_modules_spec.lua b/tests/test_modules_spec.lua
+index 2d763be..5f80794 100644
+--- a/tests/test_modules_spec.lua
++++ b/tests/test_modules_spec.lua
+@@ -37,6 +37,30 @@ describe('module initialization', function()
+         assert.is_true(result.ok)
+     end)
+ 
++    it('initializes la_engine server', function()
++        local server = require('la_engine.server.main')
++        local result = server.init({ StatusCommand = 'unit_engine_status' })
++        assert.is_true(result.ok)
++    end)
++
++    it('initializes la_engine client', function()
++        local client = require('la_engine.client.main')
++        local result = client.init({ StatusCommand = 'unit_engine_status' })
++        assert.is_true(result.ok)
++    end)
++
++    it('initializes la_admin client', function()
++        local client = require('la_admin.client.main')
++        local result = client.init({ ToggleCommand = '+unit_test_toggle', ToggleKey = 'F6' })
++        assert.is_true(result.ok)
++    end)
++
++    it('initializes la_admin server', function()
++        local server = require('la_admin.server.main')
++        local result = server.init({ AllowedEvents = { 'unit:test' } })
++        assert.is_true(result.ok)
++    end)
++
+     it('does not leak globals', function()
+         assert.has_no.errors(helper.assertNoNewGlobals)
+     end)
