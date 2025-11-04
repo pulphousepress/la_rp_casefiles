@@ -1,0 +1,1105 @@
+# Commit: refactor: modularize runtime modules and shared store
+# Justification: Wraps la_npcs, la_medical, la_weapon_limiter with init(cfg) and introduces shared caching.
+# Apply:
+#   git checkout -b audit-fix/runtime-modular
+#   git apply --index patches/runtime_modularization.patch
+# Revert:
+#   git apply -R --index patches/runtime_modularization.patch
+# Tests:
+#   PATH="$(pwd)/deps/bin:$PATH" busted
+# Push:
+#   git push origin audit-fix/runtime-modular
+
+diff --git a/la_medical/client.lua b/la_medical/client.lua
+index b4b1271..56280e6 100644
+--- a/la_medical/client.lua
++++ b/la_medical/client.lua
+@@ -1,25 +1,37 @@
+--- client.lua
+--- 1950s Basic Hospital Revive for Los Animales RP
++local Config = require("config")
+ 
+-local reviveCoords = vector3(354.23, -1403.25, 32.5) -- Pillbox (adjust if you want county hospital)
++local MedicalClient = {}
+ 
+-AddEventHandler('baseevents:onPlayerDied', function()
+-    Wait(10000) -- Time unconscious
+-    DoScreenFadeOut(1000)
+-    Wait(1500)
++local function mergeConfig(opts)
++    if type(opts) ~= 'table' then return end
++    for key, value in pairs(opts) do
++        Config[key] = value
++    end
++end
+ 
+-    -- Move player to hospital
++local function revivePlayer()
+     local ped = PlayerPedId()
+-    NetworkResurrectLocalPlayer(reviveCoords.x, reviveCoords.y, reviveCoords.z, 0.0, true, false)
++    NetworkResurrectLocalPlayer(Config.reviveCoords.x, Config.reviveCoords.y, Config.reviveCoords.z, 0.0, true, false)
+     ClearPedTasksImmediately(ped)
+     RemoveAllPedWeapons(ped, true)
+-
+     Wait(500)
+-    TriggerEvent('ox_lib:notify', {
+-        title = 'Revived at Hospital',
+-        description = 'You were treated by a local doctor.',
+-        type = 'inform'
+-    })
+-
+-    DoScreenFadeIn(1000)
+-end)
++    TriggerEvent('ox_lib:notify', Config.notify)
++    DoScreenFadeIn(Config.fadeDurationMs)
++end
++
++function MedicalClient.init(opts)
++    mergeConfig(opts)
++
++    AddEventHandler('baseevents:onPlayerDied', function()
++        Wait(Config.respawnDelayMs)
++        DoScreenFadeOut(Config.fadeDurationMs)
++        Wait(1500)
++        revivePlayer()
++    end)
++
++    return { ok = true }
++end
++
++MedicalClient.init(Config)
++
++return MedicalClient
+diff --git a/la_medical/config.example.lua b/la_medical/config.example.lua
+new file mode 100644
+index 0000000..cf26c9d
+--- /dev/null
++++ b/la_medical/config.example.lua
+@@ -0,0 +1,12 @@
++local Config = {
++    reviveCoords = vector3(354.23, -1403.25, 32.5),
++    respawnDelayMs = 10000,
++    fadeDurationMs = 1000,
++    notify = {
++        title = 'Revived at Hospital',
++        description = 'You were treated by a local doctor.',
++        type = 'inform'
++    }
++}
++
++return Config
+diff --git a/la_medical/config.lua b/la_medical/config.lua
+new file mode 100644
+index 0000000..cf26c9d
+--- /dev/null
++++ b/la_medical/config.lua
+@@ -0,0 +1,12 @@
++local Config = {
++    reviveCoords = vector3(354.23, -1403.25, 32.5),
++    respawnDelayMs = 10000,
++    fadeDurationMs = 1000,
++    notify = {
++        title = 'Revived at Hospital',
++        description = 'You were treated by a local doctor.',
++        type = 'inform'
++    }
++}
++
++return Config
+diff --git a/la_medical/fxmanifest.lua b/la_medical/fxmanifest.lua
+index 6e73188..bfcb9a8 100644
+--- a/la_medical/fxmanifest.lua
++++ b/la_medical/fxmanifest.lua
+@@ -1,9 +1,9 @@
+--- fxmanifest.lua
+ fx_version 'cerulean'
+ game 'gta5'
+ 
+ description 'Los Animales RP - 1950s Doctor Job & Revive'
+ 
++shared_script 'config.lua'
+ client_scripts {
+     'client.lua'
+ }
+diff --git a/la_medical/server.lua b/la_medical/server.lua
+index db4eae2..355a754 100644
+--- a/la_medical/server.lua
++++ b/la_medical/server.lua
+@@ -1,2 +1,7 @@
+--- server.lua
+--- Optional: Reserved for future expansion (billing, paychecks, logging)
++local MedicalServer = {}
++
++function MedicalServer.init()
++    return { ok = true }
++end
++
++return MedicalServer
+diff --git a/la_npcs/client/main.lua b/la_npcs/client/main.lua
+index 8cbdd47..541ba87 100644
+--- a/la_npcs/client/main.lua
++++ b/la_npcs/client/main.lua
+@@ -1,16 +1,23 @@
++local Config = require("config")
++
++local NPCClient = {}
+ local whitelist = {}
+ local modelsByCategory = {}
+ local zonePeds = {}
+ 
+--- count helper
++local function emitLog(level, message)
++    if Config.Debug then
++        print(string.format("[la_npcs][%s] %s", level, message))
++    end
++end
++
+ local function count(tbl)
+     local c = 0
+     for _ in pairs(tbl) do c += 1 end
+     return c
+ end
+ 
+--- Load whitelist: try DB first, fallback JSON
+-local function LoadPeds()
++local function loadPeds()
+     local dbPeds = lib.callback.await("la_npcs:getWhitelist", false)
+     if dbPeds and #dbPeds > 0 then
+         whitelist = { all = dbPeds }
+@@ -18,20 +25,19 @@ local function LoadPeds()
+         for _, name in ipairs(dbPeds) do
+             modelsByCategory.all[joaat(name)] = name
+         end
+-        print(("[la_npcs] Loaded %d models from DB whitelist."):format(#dbPeds))
+-        return
++        emitLog("info", ("Loaded %d models from DB whitelist."):format(#dbPeds))
++        return true
+     end
+ 
+-    -- fallback JSON
+     local raw = LoadResourceFile(GetCurrentResourceName(), Config.PedsFile)
+     if not raw then
+-        print("[la_npcs] ERROR: Missing " .. Config.PedsFile)
+-        return
++        emitLog("error", "Missing " .. Config.PedsFile)
++        return false
+     end
+     local ok, result = pcall(json.decode, raw)
+     if not ok or type(result) ~= "table" then
+-        print("[la_npcs] ERROR: Failed to parse JSON whitelist.")
+-        return
++        emitLog("error", "Failed to parse JSON whitelist")
++        return false
+     end
+     whitelist = result
+     modelsByCategory = {}
+@@ -41,11 +47,10 @@ local function LoadPeds()
+             modelsByCategory[cat][joaat(name)] = name
+         end
+     end
+-    print(("[la_npcs] Loaded %d categories from JSON."):format(count(whitelist)))
++    emitLog("info", ("Loaded %d categories from JSON."):format(count(whitelist)))
++    return true
+ end
+-LoadPeds()
+ 
+--- helpers
+ local function inZone(coords, zone)
+     return #(coords - zone.center) < zone.radius
+ end
+@@ -55,11 +60,11 @@ local function getRandomModel(categories)
+     for _, cat in ipairs(categories) do
+         if whitelist[cat] then
+             for _, name in ipairs(whitelist[cat]) do
+-                table.insert(pool, name)
++                pool[#pool+1] = name
+             end
+         elseif whitelist.all then
+             for _, name in ipairs(whitelist.all) do
+-                table.insert(pool, name)
++                pool[#pool+1] = name
+             end
+         end
+     end
+@@ -91,13 +96,10 @@ local function spawnReplacementPed(zone, coords)
+     zonePeds[zone.name] = zonePeds[zone.name] or {}
+     table.insert(zonePeds[zone.name], ped)
+ 
+-    if Config.Debug then
+-        print(("[la_npcs] Replaced ped with %s in %s"):format(modelName, zone.name))
+-    end
++    emitLog("debug", ("Replaced ped with %s in %s"):format(modelName, zone.name))
+ end
+ 
+--- filter & replacement loop
+-CreateThread(function()
++local function filterLoop()
+     while true do
+         Wait(Config.CheckInterval)
+         if not Config.Enable then goto continue end
+@@ -124,10 +126,9 @@ CreateThread(function()
+         end
+         ::continue::
+     end
+-end)
++end
+ 
+--- spawn maintenance loop
+-CreateThread(function()
++local function spawnLoop()
+     while true do
+         Wait(Config.CheckInterval)
+         if not Config.Enable then goto continue end
+@@ -137,7 +138,7 @@ CreateThread(function()
+             local maxPeds = zone.density and zone.density.max or Config.MaxZonePeds
+             local spawnRate = zone.density and zone.density.rate or Config.SpawnRate
+             if currentCount < maxPeds then
+-                for i = 1, spawnRate do
++                for _ = 1, spawnRate do
+                     local modelName = getRandomModel(zone.categories)
+                     if modelName then
+                         local model = joaat(modelName)
+@@ -151,19 +152,33 @@ CreateThread(function()
+                         SetEntityAsNoLongerNeeded(ped)
+                         givePedBehavior(ped, zone)
+                         table.insert(zonePeds[zone.name], ped)
+-                        if Config.Debug then print(("[la_npcs] Spawned %s in %s"):format(modelName, zone.name)) end
++                        emitLog("debug", ("Spawned %s in %s"):format(modelName, zone.name))
+                     end
+                 end
+             end
+         end
+         ::continue::
+     end
+-end)
++end
+ 
+--- debug command
+-RegisterCommand("la_debug", function()
+-    for _, zone in ipairs(Config.Zones) do
+-        local c = zonePeds[zone.name] and #zonePeds[zone.name] or 0
+-        print(("[la_npcs] Zone=%s | ActivePeds=%d"):format(zone.name, c))
++function NPCClient.init(opts)
++    if type(opts) == "table" then
++        for key, value in pairs(opts) do
++            Config[key] = value
++        end
++    end
++
++    if not loadPeds() then
++        return { ok = false, err = "Failed to load whitelist" }
+     end
+-end, false)
++
++    CreateThread(filterLoop)
++    CreateThread(spawnLoop)
++
++    emitLog("info", "Client NPC controller initialized")
++    return { ok = true }
++end
++
++NPCClient.init(Config)
++
++return NPCClient
+diff --git a/la_npcs/config.lua b/la_npcs/config.lua
+index 1fdc417..974b627 100644
+--- a/la_npcs/config.lua
++++ b/la_npcs/config.lua
+@@ -1,97 +1,94 @@
+-Config = {}
+-
+-Config.Enable = true
+-Config.Debug = false
+-Config.CheckInterval = 5000
+-
+--- Default spawn controls (used if a zone has no density defined)
+-Config.SpawnRate = 2        -- NPCs per cycle per zone
+-Config.MaxZonePeds = 20     -- per zone cap
+-Config.SpawnRadius = 60.0   -- spawn spread around zone center
+-
+--- Whitelist JSON file
+-Config.PedsFile = 'data/peds.json'
+-
+--- Zone definitions (era-correct layout for 1950s Los Animales)
+-Config.Zones = {
+-    {
+-        name = "Downtown",
+-        center = vector3(235.0, -900.0, 30.0),
+-        radius = 400.0,
+-        categories = { "ambient_males", "ambient_females", "multiplayer" },
+-        scenarios = { "WORLD_HUMAN_STAND_IMPATIENT", "WORLD_HUMAN_SMOKING", "WORLD_HUMAN_TOURIST_MAP" },
+-        density = { max = 40, rate = 3 }
+-    },
+-    {
+-        name = "Sandy Shores",
+-        center = vector3(1700.0, 3600.0, 35.0),
+-        radius = 600.0,
+-        categories = { "ambient_males", "ambient_females", "gang_male" },
+-        scenarios = { "WORLD_HUMAN_DRUG_DEALER", "WORLD_HUMAN_SMOKING", "WORLD_HUMAN_HANG_OUT_STREET" },
+-        density = { max = 15, rate = 1 }
+-    },
+-    {
+-        name = "Vinewood",
+-        center = vector3(300.0, 550.0, 120.0),
+-        radius = 300.0,
+-        categories = { "ambient_males", "ambient_females", "cutscene" },
+-        scenarios = { "WORLD_HUMAN_MOBILE_FILM_SHOCKING", "WORLD_HUMAN_PARTYING", "WORLD_HUMAN_TOURIST_MAP" },
+-        density = { max = 30, rate = 2 }
+-    },
+-    {
+-        name = "Beach",
+-        center = vector3(-1600.0, -1100.0, 0.0),
+-        radius = 500.0,
+-        categories = { "ambient_males", "ambient_females" },
+-        scenarios = { "WORLD_HUMAN_SUNBATHE", "WORLD_HUMAN_MUSCLE_FLEX", "WORLD_HUMAN_DRINKING" },
+-        density = { max = 25, rate = 2 }
+-    },
+-    {
+-        name = "Airport",
+-        center = vector3(-1034.0, -2733.0, 13.0),
+-        radius = 600.0,
+-        categories = { "scenario_male", "scenario_female" },
+-        scenarios = { "WORLD_HUMAN_STAND_IMPATIENT", "WORLD_HUMAN_COP_IDLES", "WORLD_HUMAN_SMOKING" },
+-        density = { max = 20, rate = 2 }
+-    },
+-    {
+-        name = "Docks",
+-        center = vector3(-260.0, -2440.0, 6.0),
+-        radius = 500.0,
+-        categories = { "scenario_male", "ambient_males" },
+-        scenarios = { "WORLD_HUMAN_CLIPBOARD", "WORLD_HUMAN_CONST_DRILL", "WORLD_HUMAN_SMOKING" },
+-        density = { max = 20, rate = 2 }
+-    },
+-    {
+-        name = "Grapeseed",
+-        center = vector3(2500.0, 5000.0, 45.0),
+-        radius = 400.0,
+-        categories = { "ambient_males", "ambient_females", "scenario_male" },
+-        scenarios = { "WORLD_HUMAN_GARDENER_LEAF_BLOWER", "WORLD_HUMAN_BUM_SLUMPED", "WORLD_HUMAN_SMOKING" },
+-        density = { max = 20, rate = 1 }
+-    },
+-    {
+-        name = "Paleto Bay",
+-        center = vector3(-160.0, 6300.0, 30.0),
+-        radius = 600.0,
+-        categories = { "ambient_males", "ambient_females", "multiplayer" },
+-        scenarios = { "WORLD_HUMAN_STAND_IMPATIENT", "WORLD_HUMAN_MUSCLE_FLEX", "WORLD_HUMAN_HANG_OUT_STREET" },
+-        density = { max = 20, rate = 2 }
+-    },
+-    {
+-        name = "Fort Zancudo",
+-        center = vector3(-2040.0, 3150.0, 32.0),
+-        radius = 600.0,
+-        categories = { "scenario_male", "gang_male" },
+-        scenarios = { "WORLD_HUMAN_GUARD_STAND", "WORLD_HUMAN_COP_IDLES", "WORLD_HUMAN_BINOCULARS" },
+-        density = { max = 15, rate = 1 }
+-    },
+-    {
+-        name = "Toontown",
+-        center = vector3(-1422.0, -285.0, 46.0), -- Richards Majestic
+-        radius = 120.0,
+-        categories = { "toontown_only", "animal_models" },
+-        scenarios = { "WORLD_HUMAN_CHEERING", "WORLD_HUMAN_PARTYING", "WORLD_HUMAN_MUSICIAN" },
+-        density = { max = 25, rate = 3 }
++local Config = {
++    Enable = true,
++    seedOnStart = true,
++    Debug = false,
++    CheckInterval = 5000,
++    SpawnRate = 2,
++    MaxZonePeds = 20,
++    SpawnRadius = 60.0,
++    PedsFile = 'data/peds.json',
++    Zones = {
++        {
++            name = "Downtown",
++            center = vector3(235.0, -900.0, 30.0),
++            radius = 400.0,
++            categories = { "ambient_males", "ambient_females", "multiplayer" },
++            scenarios = { "WORLD_HUMAN_STAND_IMPATIENT", "WORLD_HUMAN_SMOKING", "WORLD_HUMAN_TOURIST_MAP" },
++            density = { max = 40, rate = 3 }
++        },
++        {
++            name = "Sandy Shores",
++            center = vector3(1700.0, 3600.0, 35.0),
++            radius = 600.0,
++            categories = { "ambient_males", "ambient_females", "gang_male" },
++            scenarios = { "WORLD_HUMAN_DRUG_DEALER", "WORLD_HUMAN_SMOKING", "WORLD_HUMAN_HANG_OUT_STREET" },
++            density = { max = 15, rate = 1 }
++        },
++        {
++            name = "Vinewood",
++            center = vector3(300.0, 550.0, 120.0),
++            radius = 300.0,
++            categories = { "ambient_males", "ambient_females", "cutscene" },
++            scenarios = { "WORLD_HUMAN_MOBILE_FILM_SHOCKING", "WORLD_HUMAN_PARTYING", "WORLD_HUMAN_TOURIST_MAP" },
++            density = { max = 30, rate = 2 }
++        },
++        {
++            name = "Beach",
++            center = vector3(-1600.0, -1100.0, 0.0),
++            radius = 500.0,
++            categories = { "ambient_males", "ambient_females" },
++            scenarios = { "WORLD_HUMAN_SUNBATHE", "WORLD_HUMAN_MUSCLE_FLEX", "WORLD_HUMAN_DRINKING" },
++            density = { max = 25, rate = 2 }
++        },
++        {
++            name = "Airport",
++            center = vector3(-1034.0, -2733.0, 13.0),
++            radius = 600.0,
++            categories = { "scenario_male", "scenario_female" },
++            scenarios = { "WORLD_HUMAN_STAND_IMPATIENT", "WORLD_HUMAN_COP_IDLES", "WORLD_HUMAN_SMOKING" },
++            density = { max = 20, rate = 2 }
++        },
++        {
++            name = "Docks",
++            center = vector3(-260.0, -2440.0, 6.0),
++            radius = 500.0,
++            categories = { "scenario_male", "ambient_males" },
++            scenarios = { "WORLD_HUMAN_CLIPBOARD", "WORLD_HUMAN_CONST_DRILL", "WORLD_HUMAN_SMOKING" },
++            density = { max = 20, rate = 2 }
++        },
++        {
++            name = "Grapeseed",
++            center = vector3(2500.0, 5000.0, 45.0),
++            radius = 400.0,
++            categories = { "ambient_males", "ambient_females", "scenario_male" },
++            scenarios = { "WORLD_HUMAN_GARDENER_LEAF_BLOWER", "WORLD_HUMAN_BUM_SLUMPED", "WORLD_HUMAN_SMOKING" },
++            density = { max = 20, rate = 1 }
++        },
++        {
++            name = "Paleto Bay",
++            center = vector3(-160.0, 6300.0, 30.0),
++            radius = 600.0,
++            categories = { "ambient_males", "ambient_females", "multiplayer" },
++            scenarios = { "WORLD_HUMAN_STAND_IMPATIENT", "WORLD_HUMAN_MUSCLE_FLEX", "WORLD_HUMAN_HANG_OUT_STREET" },
++            density = { max = 20, rate = 2 }
++        },
++        {
++            name = "Fort Zancudo",
++            center = vector3(-2040.0, 3150.0, 32.0),
++            radius = 600.0,
++            categories = { "scenario_male", "gang_male" },
++            scenarios = { "WORLD_HUMAN_GUARD_STAND", "WORLD_HUMAN_COP_IDLES", "WORLD_HUMAN_BINOCULARS" },
++            density = { max = 15, rate = 1 }
++        },
++        {
++            name = "Toontown",
++            center = vector3(-1422.0, -285.0, 46.0),
++            radius = 120.0,
++            categories = { "toontown_only", "animal_models" },
++            scenarios = { "WORLD_HUMAN_CHEERING", "WORLD_HUMAN_PARTYING", "WORLD_HUMAN_MUSICIAN" },
++            density = { max = 25, rate = 3 }
++        }
+     }
+ }
++
++return Config
+diff --git a/la_npcs/fxmanifest.lua b/la_npcs/fxmanifest.lua
+index 157388a..82d463c 100644
+--- a/la_npcs/fxmanifest.lua
++++ b/la_npcs/fxmanifest.lua
+@@ -5,7 +5,10 @@ author 'Los Animales RP'
+ description 'NPC zone controller with MySQL whitelist + JSON fallback'
+ version '1.3.1'
+ 
+-shared_script '@ox_lib/init.lua'
++shared_scripts {
++    '@ox_lib/init.lua',
++    '@ph_shared/init.lua'
++}
+ 
+ server_scripts {
+     '@oxmysql/lib/MySQL.lua',
+diff --git a/la_npcs/server/main.lua b/la_npcs/server/main.lua
+index 6eb0f50..f8ae430 100644
+--- a/la_npcs/server/main.lua
++++ b/la_npcs/server/main.lua
+@@ -1,24 +1,23 @@
+---------------------------------------------
+--- Los Animales RP : la_npcs v1.4.1
+--- Purpose: One-time DB seed + JSON import with category tags
+--- Notes:
+---  - Creates tables/indexes if missing
+---  - Seeds only once (flagged in la_flags)
+---  - Manual re-seed: /la_import_peds (ACE: la.npcsuite.admin or console)
+---------------------------------------------
+-
+-local RES = GetCurrentResourceName()
+-
+-CreateThread(function()
+-    print("[la_npcs] v1.4.1 (one-time seed + JSON sync + category tagging) initializing...")
+-end)
+-
+--------------------------------------------------
+--- DB BOOTSTRAP: tables & indexes
+--------------------------------------------------
+-CreateThread(function()
+-    -- Meta flags table to track one-time operations
+-    exports.oxmysql:execute([[
++local Config = require("config")
++local Shared = require("ph_shared").new("la_npcs")
++
++local NPCServer = {}
++
++local function emitLog(level, message)
++    local msg = string.format("[la_npcs][%s] %s", level, message)
++    print(msg)
++    return msg
++end
++
++local function mergeConfig(opts)
++    if type(opts) ~= "table" then return end
++    for key, value in pairs(opts) do
++        Config[key] = value
++    end
++end
++
++local function bootstrapTables()
++    exports.oxmysql:execute([[ 
+         CREATE TABLE IF NOT EXISTS la_flags (
+             name VARCHAR(64) PRIMARY KEY,
+             value TINYINT(1) NOT NULL DEFAULT 0,
+@@ -26,8 +25,7 @@ CreateThread(function()
+         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+     ]])
+ 
+-    -- Main whitelist
+-    exports.oxmysql:execute([[
++    exports.oxmysql:execute([[ 
+         CREATE TABLE IF NOT EXISTS ped_whitelist (
+             id INT AUTO_INCREMENT PRIMARY KEY,
+             model VARCHAR(191) NOT NULL UNIQUE,
+@@ -39,17 +37,13 @@ CreateThread(function()
+         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+     ]])
+ 
+-    -- Helpful indexes (safe if already exist)
+-    exports.oxmysql:execute([[
++    exports.oxmysql:execute([[ 
+         CREATE INDEX IF NOT EXISTS idx_ped_category ON ped_whitelist (category);
+     ]])
+ 
+-    print("[la_npcs] DB bootstrap complete.")
+-end)
++    emitLog("info", "DB bootstrap complete")
++end
+ 
+--------------------------------------------------
+--- SAFE BASE SEED (minimal set for empty DBs)
+--------------------------------------------------
+ local baseSeed = {
+     { model = "a_c_cat_01",    label = "Cat (ambient)", notes = "Default GTA animal ped", category = "animal_models",  added_by = "server_import" },
+     { model = "a_c_husky",     label = "Husky (dog)",   notes = "Ambient dog ped",        category = "animal_models",  added_by = "server_import" },
+@@ -57,9 +51,6 @@ local baseSeed = {
+     { model = "Doorman01SMY",  label = "Doorman",       notes = "Door staff ped",         category = "scenario_male",  added_by = "server_import" },
+ }
+ 
+--------------------------------------------------
+--- INSERT HELPERS
+--------------------------------------------------
+ local function insertPeds(entries, quiet)
+     if type(entries) ~= "table" or #entries == 0 then return 0 end
+     local inserted = 0
+@@ -71,7 +62,7 @@ local function insertPeds(entries, quiet)
+                 if type(result) == "table" and result.affectedRows and result.affectedRows > 0 then
+                     inserted = inserted + 1
+                     if not quiet then
+-                        print(("[la_npcs] + %s (%s)"):format(e.model, e.category or "unknown"))
++                        emitLog("info", ("+ %s (%s)"):format(e.model, e.category or "unknown"))
+                     end
+                 end
+             end
+@@ -81,14 +72,14 @@ local function insertPeds(entries, quiet)
+ end
+ 
+ local function loadPedsJSON()
+-    local file = LoadResourceFile(RES, "data/peds.json")
++    local file = LoadResourceFile(GetCurrentResourceName(), "data/peds.json")
+     if not file then
+-        print("[la_npcs] WARN: data/peds.json not found; skipping JSON import.")
++        emitLog("warn", "data/peds.json not found; skipping JSON import")
+         return {}
+     end
+     local ok, data = pcall(json.decode, file)
+     if not ok or type(data) ~= "table" then
+-        print("[la_npcs] ERROR: Failed to decode data/peds.json; skipping.")
++        emitLog("error", "Failed to decode data/peds.json; skipping")
+         return {}
+     end
+ 
+@@ -109,82 +100,99 @@ local function loadPedsJSON()
+     return bulk
+ end
+ 
+--------------------------------------------------
+--- ONE-TIME SEED LOGIC
+--------------------------------------------------
+ local function getFlag(name)
++    local cache = Shared:get("flag:" .. name)
++    if cache.ok and cache.value ~= nil then
++        return cache.value
++    end
+     local r = exports.oxmysql:executeSync("SELECT value FROM la_flags WHERE name = ? LIMIT 1", { name })
+-    if r and r[1] then return tonumber(r[1].value) == 1 end
+-    return false
++    local value = false
++    if r and r[1] then
++        value = tonumber(r[1].value) == 1
++    end
++    Shared:set("flag:" .. name, value)
++    return value
+ end
+ 
+ local function setFlag(name, val)
+     exports.oxmysql:execute("REPLACE INTO la_flags (name, value) VALUES (?, ?)", { name, val and 1 or 0 })
++    Shared:set("flag:" .. name, val and true or false)
+ end
+ 
+ local function seedOnce()
+-    -- If already seeded, skip
+     if getFlag("ped_seed") then
+-        print("[la_npcs] Seed previously completed; skipping.")
++        emitLog("info", "Seed previously completed; skipping")
+         return
+     end
+ 
+-    print("[la_npcs] Running one-time seed...")
++    emitLog("info", "Running one-time seed")
+     insertPeds(baseSeed, true)
+ 
+     local jsonBulk = loadPedsJSON()
+     if #jsonBulk > 0 then
+-        print(("[la_npcs] Importing %d peds from JSON..."):format(#jsonBulk))
++        emitLog("info", ("Importing %d peds from JSON"):format(#jsonBulk))
+         insertPeds(jsonBulk, true)
+     end
+ 
+     setFlag("ped_seed", true)
+-    print("[la_npcs] Seed complete.")
++    emitLog("info", "Seed complete")
+ end
+ 
+--------------------------------------------------
+--- RESOURCE START: seed once, then ready
+--------------------------------------------------
+-AddEventHandler("onResourceStart", function(resource)
+-    if resource ~= RES then return end
+-    seedOnce()
+-end)
+-
+--------------------------------------------------
+--- ADMIN COMMANDS
+--------------------------------------------------
+-RegisterCommand("la_import_peds", function(source)
+-    local isConsole = (source == 0)
+-    local allowed = isConsole or IsPlayerAceAllowed(source, "la.npcsuite.admin") or IsPlayerAceAllowed(source, "admin")
+-    if not allowed then
+-        print("[la_npcs] Permission denied for /la_import_peds")
+-        return
+-    end
++local function registerCallbacks()
++    lib.callback.register("la_npcs:getWhitelist", function()
++        local results = exports.oxmysql:executeSync("SELECT model FROM ped_whitelist")
++        if not results or #results == 0 then
++            emitLog("warn", "No entries in ped_whitelist; returning nil")
++            return nil
++        end
++        local models = {}
++        for _, row in ipairs(results) do
++            models[#models+1] = row.model
++        end
++        emitLog("info", ("Synced %d ped models from DB → clients"):format(#models))
++        return models
++    end)
++end
+ 
+-    -- Re-seed on demand: base + JSON (idempotent via INSERT IGNORE)
+-    print("[la_npcs] Manual import starting...")
+-    insertPeds(baseSeed, false)
+-    local bulk = loadPedsJSON()
+-    if #bulk > 0 then
+-        print(("[la_npcs] Importing %d peds from JSON..."):format(#bulk))
+-        insertPeds(bulk, false)
+-    end
+-    print("[la_npcs] Manual import complete.")
+-end, true)
+-
+--------------------------------------------------
+--- DB → CLIENT SYNC CALLBACK
+--------------------------------------------------
+-lib.callback.register("la_npcs:getWhitelist", function()
+-    local results = exports.oxmysql:executeSync("SELECT model FROM ped_whitelist")
+-    if not results or #results == 0 then
+-        print("[la_npcs] No entries in ped_whitelist; returning nil.")
+-        return nil
+-    end
+-    local models = {}
+-    for _, row in ipairs(results) do
+-        models[#models+1] = row.model
++local function registerCommands()
++    RegisterCommand("la_import_peds", function(source)
++        local isConsole = (source == 0)
++        local allowed = isConsole or IsPlayerAceAllowed(source, "la.npcsuite.admin") or IsPlayerAceAllowed(source, "admin")
++        if not allowed then
++            emitLog("warn", "Permission denied for /la_import_peds")
++            return
++        end
++
++        emitLog("info", "Manual import starting")
++        insertPeds(baseSeed, false)
++        local bulk = loadPedsJSON()
++        if #bulk > 0 then
++            emitLog("info", ("Importing %d peds from JSON"):format(#bulk))
++            insertPeds(bulk, false)
++        end
++        emitLog("info", "Manual import complete")
++    end, true)
++end
++
++function NPCServer.init(opts)
++    mergeConfig(opts)
++    bootstrapTables()
++    registerCallbacks()
++    registerCommands()
++
++    if Config.seedOnStart ~= false then
++        seedOnce()
+     end
+-    print(("[la_npcs] Synced %d ped models from DB → clients."):format(#models))
+-    return models
+-end)
++
++    AddEventHandler("onResourceStart", function(resource)
++        if resource ~= GetCurrentResourceName() then return end
++        seedOnce()
++    end)
++
++    emitLog("info", "v1.4.1 server module initialized")
++    return { ok = true }
++end
++
++NPCServer.init(Config)
++
++return NPCServer
+diff --git a/la_weapon_limiter/config.example.lua b/la_weapon_limiter/config.example.lua
+new file mode 100644
+index 0000000..fd44f7a
+--- /dev/null
++++ b/la_weapon_limiter/config.example.lua
+@@ -0,0 +1,13 @@
++local Config = {
++    Mode = 'block',
++    WeaponJobWhitelist = {
++        police = { 'WEAPON_PISTOL', 'WEAPON_REVOLVER', 'WEAPON_FLARE', 'WEAPON_PUMPSHOTGUN', 'WEAPON_BAT' },
++        detective = { 'WEAPON_PISTOL', 'WEAPON_DOUBLEACTION', 'WEAPON_KNUCKLE' },
++        mob = { 'WEAPON_GUSENBERG', 'WEAPON_SAWNOFFSHOTGUN', 'WEAPON_CLEAVER', 'WEAPON_SWITCHBLADE' },
++        fire = { 'WEAPON_HATCHET', 'WEAPON_FLARE' },
++        farmer = { 'WEAPON_MUSKET', 'WEAPON_HATCHET' },
++        bartender = { 'WEAPON_KNIFE', 'WEAPON_BAT' }
++    }
++}
++
++return Config
+diff --git a/la_weapon_limiter/config.lua b/la_weapon_limiter/config.lua
+new file mode 100644
+index 0000000..fd44f7a
+--- /dev/null
++++ b/la_weapon_limiter/config.lua
+@@ -0,0 +1,13 @@
++local Config = {
++    Mode = 'block',
++    WeaponJobWhitelist = {
++        police = { 'WEAPON_PISTOL', 'WEAPON_REVOLVER', 'WEAPON_FLARE', 'WEAPON_PUMPSHOTGUN', 'WEAPON_BAT' },
++        detective = { 'WEAPON_PISTOL', 'WEAPON_DOUBLEACTION', 'WEAPON_KNUCKLE' },
++        mob = { 'WEAPON_GUSENBERG', 'WEAPON_SAWNOFFSHOTGUN', 'WEAPON_CLEAVER', 'WEAPON_SWITCHBLADE' },
++        fire = { 'WEAPON_HATCHET', 'WEAPON_FLARE' },
++        farmer = { 'WEAPON_MUSKET', 'WEAPON_HATCHET' },
++        bartender = { 'WEAPON_KNIFE', 'WEAPON_BAT' }
++    }
++}
++
++return Config
+diff --git a/la_weapon_limiter/fxmanifest.lua b/la_weapon_limiter/fxmanifest.lua
+index a8e9bf2..e6c74f8 100644
+--- a/la_weapon_limiter/fxmanifest.lua
++++ b/la_weapon_limiter/fxmanifest.lua
+@@ -1,7 +1,13 @@
+--- fxmanifest.lua
+ fx_version 'cerulean'
+ game 'gta5'
+ 
+ description 'Los Animales RP - Job-Based Weapon Restrictions'
+ 
++shared_scripts {
++    '@ph_shared/init.lua',
++    'config.lua'
++}
++
+ server_script 'la_weapon_limiter.lua'
++
++lua54 'yes'
+diff --git a/la_weapon_limiter/la_weapon_limiter.lua b/la_weapon_limiter/la_weapon_limiter.lua
+index f2bdef8..39014e2 100644
+--- a/la_weapon_limiter/la_weapon_limiter.lua
++++ b/la_weapon_limiter/la_weapon_limiter.lua
+@@ -1,96 +1,75 @@
+--- la_weapon_limiter.lua
+--- Author: Los Animales RP
+--- Description: Restrict weapon usage to era-appropriate jobs only
+-
+-local Config = {}
+-
+--- Enforcement mode:
+--- "off"   = disable
+--- "warn"  = allow but notify
+--- "block" = prevent equipping
+--- "strip" = remove the weapon entirely
+-Config.Mode = "block"
+-
+--- Job → Weapon list mapping (WEAPON_ names)
+-Config.WeaponJobWhitelist = {
+-    police = {
+-        "WEAPON_PISTOL",
+-        "WEAPON_REVOLVER",
+-        "WEAPON_FLARE",
+-        "WEAPON_PUMPSHOTGUN",
+-        "WEAPON_BAT"
+-    },
+-    detective = {
+-        "WEAPON_PISTOL",
+-        "WEAPON_DOUBLEACTION",
+-        "WEAPON_KNUCKLE",
+-    },
+-    mob = {
+-        "WEAPON_GUSENBERG",
+-        "WEAPON_SAWNOFFSHOTGUN",
+-        "WEAPON_CLEAVER",
+-        "WEAPON_SWITCHBLADE"
+-    },
+-    fire = {
+-        "WEAPON_HATCHET",
+-        "WEAPON_FLARE"
+-    },
+-    farmer = {
+-        "WEAPON_MUSKET",
+-        "WEAPON_HATCHET"
+-    },
+-    bartender = {
+-        "WEAPON_KNIFE",
+-        "WEAPON_BAT"
+-    },
+-}
+-
+--- Messages
+-local function notify(source, msg)
++local Config = require("config")
++local SharedStore = require("ph_shared").new("la_weapon_limiter")
++
++local WeaponLimiter = {}
++
++local function mergeConfig(opts)
++    if type(opts) ~= 'table' then return end
++    for key, value in pairs(opts) do
++        Config[key] = value
++    end
++end
++
++local function notify(source, msg, kind)
+     TriggerClientEvent('ox_lib:notify', source, {
+-        type = 'error',
++        type = kind or 'error',
+         description = msg,
+         duration = 5000
+     })
+ end
+ 
+--- Check if weapon is allowed for job
+ local function isAllowed(job, weapon)
++    local cacheKey = string.format("allow:%s:%s", job or 'unknown', weapon or 'unknown')
++    local cached = SharedStore:get(cacheKey)
++    if cached.ok and cached.value ~= nil then
++        return cached.value
++    end
++
+     local list = Config.WeaponJobWhitelist[job]
+-    if not list then return false end
+-    for _, v in pairs(list) do
+-        if v == weapon then return true end
++    local allowed = false
++    if list then
++        for _, v in pairs(list) do
++            if v == weapon then
++                allowed = true
++                break
++            end
++        end
+     end
+-    return false
++
++    SharedStore:set(cacheKey, allowed)
++    return allowed
+ end
+ 
+--- Strip weapon if needed
+ local function stripWeapon(src, weapon)
+     local xPlayer = exports.ox_inventory:GetPlayer(src)
+     if not xPlayer then return end
+-    local has = xPlayer:Search('weapon', weapon)
++    local ok, has = pcall(function()
++        return xPlayer:Search('weapon', weapon)
++    end)
++    if not ok then
++        notify(src, 'Unable to verify weapon ownership', 'error')
++        return
++    end
+     if has then
+         xPlayer:RemoveItem('weapon', weapon, 1)
+         notify(src, "That weapon is not authorized for your job.")
+     end
+ end
+ 
+--- On weapon equipped
+-RegisterNetEvent('ox_inventory:weaponEquipped', function(weapon)
++local function onWeaponEquipped(weapon)
+     local src = source
+     local xPlayer = exports.ox_inventory:GetPlayer(src)
+     if not xPlayer then return end
+ 
+-    local job = xPlayer.job.name
++    local job = xPlayer.job and xPlayer.job.name or 'unemployed'
+     local weaponName = string.upper(weapon)
+-
+     local allowed = isAllowed(job, weaponName)
+ 
+     if Config.Mode == "off" then return end
+ 
+     if not allowed then
+         if Config.Mode == "warn" then
+-            notify(src, "⚠️ This weapon is not authorized for your current job.")
++            notify(src, "⚠️ This weapon is not authorized for your current job.", 'warning')
+         elseif Config.Mode == "block" then
+             notify(src, "❌ Weapon blocked: not allowed for your job.")
+             CancelEvent()
+@@ -98,10 +77,9 @@ RegisterNetEvent('ox_inventory:weaponEquipped', function(weapon)
+             stripWeapon(src, weaponName)
+         end
+     end
+-end)
++end
+ 
+--- Recheck inventory on job change (recommended)
+-RegisterNetEvent('QBCore:Server:OnJobUpdate', function(sourceJob, newJob)
++local function recheckInventory(_, newJob)
+     local src = source
+     Wait(500)
+     local xPlayer = exports.ox_inventory:GetPlayer(src)
+@@ -116,9 +94,23 @@ RegisterNetEvent('QBCore:Server:OnJobUpdate', function(sourceJob, newJob)
+                     xPlayer:RemoveItem('weapon', weaponName, 1)
+                     notify(src, weaponName .. " removed due to job restriction.")
+                 elseif Config.Mode == "warn" then
+-                    notify(src, weaponName .. " is not allowed for your job.")
++                    notify(src, weaponName .. " is not allowed for your job.", 'warning')
+                 end
+             end
+         end
+     end
+-end)
++end
++
++function WeaponLimiter.init(opts)
++    mergeConfig(opts)
++
++    RegisterNetEvent('ox_inventory:weaponEquipped', onWeaponEquipped)
++    RegisterNetEvent('QBCore:Server:OnJobUpdate', recheckInventory)
++
++    print('[la_weapon_limiter] enforcement mode: ' .. Config.Mode)
++    return { ok = true }
++end
++
++WeaponLimiter.init(Config)
++
++return WeaponLimiter
+diff --git a/ph_shared/fxmanifest.lua b/ph_shared/fxmanifest.lua
+new file mode 100644
+index 0000000..fad08b1
+--- /dev/null
++++ b/ph_shared/fxmanifest.lua
+@@ -0,0 +1,6 @@
++fx_version 'cerulean'
++game 'gta5'
++
++shared_script 'init.lua'
++
++lua54 'yes'
+diff --git a/ph_shared/init.lua b/ph_shared/init.lua
+new file mode 100644
+index 0000000..d8060e6
+--- /dev/null
++++ b/ph_shared/init.lua
+@@ -0,0 +1,65 @@
++local Shared = {}
++Shared.__index = Shared
++
++local function sanitizeKey(key)
++    if type(key) ~= 'string' then
++        return nil, 'ph_shared keys must be strings'
++    end
++    return key
++end
++
++function Shared.new(name, opts)
++    return setmetatable({
++        name = name or 'ph_shared',
++        state = {},
++        readonly = opts and opts.readonly or false
++    }, Shared)
++end
++
++function Shared:get(key)
++    local normalized, err = sanitizeKey(key)
++    if not normalized then
++        return { ok = false, err = err }
++    end
++    return { ok = true, value = self.state[normalized] }
++end
++
++function Shared:set(key, value)
++    if self.readonly then
++        return { ok = false, err = 'store is read-only' }
++    end
++    local normalized, err = sanitizeKey(key)
++    if not normalized then
++        return { ok = false, err = err }
++    end
++    self.state[normalized] = value
++    return { ok = true, value = value }
++end
++
++function Shared:merge(tbl)
++    if self.readonly then
++        return { ok = false, err = 'store is read-only' }
++    end
++    if type(tbl) ~= 'table' then
++        return { ok = false, err = 'expected table' }
++    end
++    for key, value in pairs(tbl) do
++        local result = self:set(key, value)
++        if not result.ok then
++            return result
++        end
++    end
++    return { ok = true }
++end
++
++local API = {
++    new = function(name, opts)
++        return Shared.new(name, opts)
++    end
++}
++
++if package and package.loaded then
++    package.loaded['ph_shared'] = API
++end
++
++return API

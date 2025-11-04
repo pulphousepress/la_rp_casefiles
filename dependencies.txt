@@ -1,0 +1,16 @@
+# Luarocks dependencies
+luarocks install --server=https://luarocks.org busted 2.1.0-1
+luarocks install --server=https://luarocks.org luacheck 1.1.0-1
+
+# FiveM/QBox resources (ensure order in server.cfg)
+ensure oxmysql
+ensure ox_lib
+ensure ox_target
+ensure ox_inventory
+ensure la_core
+ensure la_engine
+ensure ph_shared
+ensure la_npcs
+ensure la_medical
+ensure la_weapon_limiter
+ensure la_admin

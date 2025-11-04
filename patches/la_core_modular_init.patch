@@ -1,0 +1,113 @@
+# Commit: refactor: modularize la_core config and add template
+# Justification: Enforces init(cfg) pattern and supplies safe configuration example.
+# Apply:
+#   git checkout -b audit-fix/la-core-modular-init
+#   git apply --index patches/la_core_modular_init.patch
+# Revert:
+#   git apply -R --index patches/la_core_modular_init.patch
+# Tests:
+#   PATH="$(pwd)/deps/bin:$PATH" busted
+# Push:
+#   git push origin audit-fix/la-core-modular-init
+
+--- a/la_core/config.lua
++++ b/la_core/config.lua
+@@
+-Config = {}
+-
+-Config.EnableCore = true
+-Config.Debug = false
++local Config = {
++    EnableCore = true,
++    Debug = false
++}
++
++return Config
+--- /dev/null
++++ b/la_core/config.example.lua
+@@
++local Config = {
++    EnableCore = true,
++    Debug = false
++}
++
++return Config
+--- a/la_core/server/main.lua
++++ b/la_core/server/main.lua
+@@
+-RegisterCommand("la_status", function(source)
+-    local src = source
+-    local msg = "[la_core] Active=true"
+-    if src == 0 then
+-        print(msg)
+-    else
+-        TriggerClientEvent("chat:addMessage", src, { args = { msg } })
+-    end
+-end, false)
+-
+-CreateThread(function()
+-    print("[la_core] v1.0.2 loaded on server.")
+-end)
++local Config = require("config")
++
++local Core = {}
++
++local function emitLog(level, message)
++    local msg = string.format("[la_core][%s] %s", level, message)
++    print(msg)
++    return msg
++end
++
++function Core.init(opts)
++    if type(opts) == "table" then
++        for key, value in pairs(opts) do
++            Config[key] = value
++        end
++    end
++
++    RegisterCommand("la_status", function(source)
++        local src = source
++        local msg = emitLog("info", "Active=true")
++        if src ~= 0 then
++            TriggerClientEvent("chat:addMessage", src, { args = { msg } })
++        end
++    end, false)
++
++    CreateThread(function()
++        emitLog("info", "v1.0.2 loaded on server.")
++    end)
++
++    return { ok = true }
++end
++
++return Core
+--- a/la_core/client/main.lua
++++ b/la_core/client/main.lua
+@@
+-local isAppearanceOpen = false
+-
+--- /la_status client-side test
+-RegisterCommand("la_status", function()
+-    print("[la_core] Active=true")
+-end, false)
+-
+-
++local Config = require("config")
++
++local CoreClient = {}
++
++function CoreClient.init(opts)
++    if type(opts) == "table" then
++        for key, value in pairs(opts) do
++            Config[key] = value
++        end
++    end
++
++    RegisterCommand("la_status", function()
++        print("[la_core] Active=true")
++    end, false)
++
++    return { ok = true }
++end
++
++return CoreClient
