@@ -1,16 +1,23 @@
+local Config = require("config")
+
+local NPCClient = {}
 local whitelist = {}
 local modelsByCategory = {}
 local zonePeds = {}
 
--- count helper
+local function emitLog(level, message)
+    if Config.Debug then
+        print(string.format("[la_npcs][%s] %s", level, message))
+    end
+end
+
 local function count(tbl)
     local c = 0
     for _ in pairs(tbl) do c += 1 end
     return c
 end
 
--- Load whitelist: try DB first, fallback JSON
-local function LoadPeds()
+local function loadPeds()
     local dbPeds = lib.callback.await("la_npcs:getWhitelist", false)
     if dbPeds and #dbPeds > 0 then
         whitelist = { all = dbPeds }
@@ -18,20 +25,19 @@ local function LoadPeds()
         for _, name in ipairs(dbPeds) do
             modelsByCategory.all[joaat(name)] = name
         end
-        print(("[la_npcs] Loaded %d models from DB whitelist."):format(#dbPeds))
-        return
+        emitLog("info", ("Loaded %d models from DB whitelist."):format(#dbPeds))
+        return true
     end
 
-    -- fallback JSON
     local raw = LoadResourceFile(GetCurrentResourceName(), Config.PedsFile)
     if not raw then
-        print("[la_npcs] ERROR: Missing " .. Config.PedsFile)
-        return
+        emitLog("error", "Missing " .. Config.PedsFile)
+        return false
     end
     local ok, result = pcall(json.decode, raw)
     if not ok or type(result) ~= "table" then
-        print("[la_npcs] ERROR: Failed to parse JSON whitelist.")
-        return
+        emitLog("error", "Failed to parse JSON whitelist")
+        return false
     end
     whitelist = result
     modelsByCategory = {}
@@ -41,11 +47,10 @@ local function LoadPeds()
             modelsByCategory[cat][joaat(name)] = name
         end
     end
-    print(("[la_npcs] Loaded %d categories from JSON."):format(count(whitelist)))
+    emitLog("info", ("Loaded %d categories from JSON."):format(count(whitelist)))
+    return true
 end
-LoadPeds()
 
--- helpers
 local function inZone(coords, zone)
     return #(coords - zone.center) < zone.radius
 end
@@ -55,11 +60,11 @@ local function getRandomModel(categories)
     for _, cat in ipairs(categories) do
         if whitelist[cat] then
             for _, name in ipairs(whitelist[cat]) do
-                table.insert(pool, name)
+                pool[#pool+1] = name
             end
         elseif whitelist.all then
             for _, name in ipairs(whitelist.all) do
-                table.insert(pool, name)
+                pool[#pool+1] = name
             end
         end
     end
@@ -91,13 +96,10 @@ local function spawnReplacementPed(zone, coords)
     zonePeds[zone.name] = zonePeds[zone.name] or {}
     table.insert(zonePeds[zone.name], ped)
 
-    if Config.Debug then
-        print(("[la_npcs] Replaced ped with %s in %s"):format(modelName, zone.name))
-    end
+    emitLog("debug", ("Replaced ped with %s in %s"):format(modelName, zone.name))
 end
 
--- filter & replacement loop
-CreateThread(function()
+local function filterLoop()
     while true do
         Wait(Config.CheckInterval)
         if not Config.Enable then goto continue end
@@ -124,10 +126,9 @@ CreateThread(function()
         end
         ::continue::
     end
-end)
+end
 
--- spawn maintenance loop
-CreateThread(function()
+local function spawnLoop()
     while true do
         Wait(Config.CheckInterval)
         if not Config.Enable then goto continue end
@@ -137,7 +138,7 @@ CreateThread(function()
             local maxPeds = zone.density and zone.density.max or Config.MaxZonePeds
             local spawnRate = zone.density and zone.density.rate or Config.SpawnRate
             if currentCount < maxPeds then
-                for i = 1, spawnRate do
+                for _ = 1, spawnRate do
                     local modelName = getRandomModel(zone.categories)
                     if modelName then
                         local model = joaat(modelName)
@@ -151,19 +152,33 @@ CreateThread(function()
                         SetEntityAsNoLongerNeeded(ped)
                         givePedBehavior(ped, zone)
                         table.insert(zonePeds[zone.name], ped)
-                        if Config.Debug then print(("[la_npcs] Spawned %s in %s"):format(modelName, zone.name)) end
+                        emitLog("debug", ("Spawned %s in %s"):format(modelName, zone.name))
                     end
                 end
             end
         end
         ::continue::
     end
-end)
+end
 
--- debug command
-RegisterCommand("la_debug", function()
-    for _, zone in ipairs(Config.Zones) do
-        local c = zonePeds[zone.name] and #zonePeds[zone.name] or 0
-        print(("[la_npcs] Zone=%s | ActivePeds=%d"):format(zone.name, c))
+function NPCClient.init(opts)
+    if type(opts) == "table" then
+        for key, value in pairs(opts) do
+            Config[key] = value
+        end
     end
-end, false)
+
+    if not loadPeds() then
+        return { ok = false, err = "Failed to load whitelist" }
+    end
+
+    CreateThread(filterLoop)
+    CreateThread(spawnLoop)
+
+    emitLog("info", "Client NPC controller initialized")
+    return { ok = true }
+end
+
+NPCClient.init(Config)
+
+return NPCClient

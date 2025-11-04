@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS ped_whitelist;
+DROP TABLE IF EXISTS la_flags;
