@@ -8,9 +8,7 @@ ensure ox_lib
 ensure ox_target
 ensure ox_inventory
 ensure la_core
-ensure la_engine
 ensure ph_shared
 ensure la_npcs
 ensure la_medical
 ensure la_weapon_limiter
-ensure la_admin

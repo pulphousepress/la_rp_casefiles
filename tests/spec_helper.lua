@@ -81,8 +81,6 @@ _G.RegisterNetEvent = function() end
 allow('RegisterNetEvent')
 _G.TriggerClientEvent = function() end
 allow('TriggerClientEvent')
-_G.TriggerServerEvent = function() end
-allow('TriggerServerEvent')
 _G.AddEventHandler = function() end
 allow('AddEventHandler')
 _G.IsPlayerAceAllowed = function() return false end
@@ -102,21 +100,6 @@ _G.lib = {
     }
 }
 allow('lib')
-
-_G.SetNuiFocus = function() end
-allow('SetNuiFocus')
-_G.SendNUIMessage = function() end
-allow('SendNUIMessage')
-_G.RegisterNUICallback = function(_, cb)
-    if cb then cb('ok') end
-end
-allow('RegisterNUICallback')
-_G.RegisterKeyMapping = function() end
-allow('RegisterKeyMapping')
-_G.GetPlayerName = function()
-    return 'unit-test-player'
-end
-allow('GetPlayerName')
 
 _G.exports = {
     oxmysql = {

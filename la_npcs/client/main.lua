@@ -12,6 +12,12 @@ local function emitLog(level, message)
     end
 end
 
+local function emitLog(level, message)
+    if Config.Debug then
+        print(string.format("[la_npcs][%s] %s", level, message))
+    end
+end
+
 local function count(tbl)
     local c = 0
     for _ in pairs(tbl) do c = c + 1 end
@@ -162,27 +168,11 @@ local function spawnLoop()
     end
 end
 
-local function validateConfig()
-    if type(Config.Zones) ~= "table" or #Config.Zones == 0 then
-        return false, "Config.Zones is required"
-    end
-    return true
-end
-
 function NPCClient.init(opts)
-    if initialized then
-        return { ok = true, alreadyInitialized = true }
-    end
-
     if type(opts) == "table" then
         for key, value in pairs(opts) do
             Config[key] = value
         end
-    end
-
-    local ok, err = validateConfig()
-    if not ok then
-        return { ok = false, err = err }
     end
 
     if not loadPeds() then
@@ -192,9 +182,10 @@ function NPCClient.init(opts)
     CreateThread(filterLoop)
     CreateThread(spawnLoop)
 
-    initialized = true
     emitLog("info", "Client NPC controller initialized")
     return { ok = true }
 end
+
+NPCClient.init(Config)
 
 return NPCClient

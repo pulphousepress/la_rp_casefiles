@@ -2,7 +2,6 @@ local Config = require("config")
 local Shared = require("ph_shared").new("la_npcs")
 
 local NPCServer = {}
-local initialized = false
 
 local function emitLog(level, message)
     local msg = string.format("[la_npcs][%s] %s", level, message)
@@ -17,46 +16,30 @@ local function mergeConfig(opts)
     end
 end
 
-local function ensureOxMySQL()
-    if not exports or not exports.oxmysql then
-        return false, "oxmysql export not found"
-    end
-    if type(exports.oxmysql.execute) ~= "function" or type(exports.oxmysql.executeSync) ~= "function" then
-        return false, "oxmysql exports missing execute/executeSync"
-    end
-    return true
-end
-
 local function bootstrapTables()
-    exports.oxmysql:execute([[CREATE TABLE IF NOT EXISTS la_flags (
-        name VARCHAR(64) PRIMARY KEY,
-        value TINYINT(1) NOT NULL DEFAULT 0,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;]])
-
-    exports.oxmysql:execute([[CREATE TABLE IF NOT EXISTS ped_whitelist (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        model VARCHAR(191) NOT NULL UNIQUE,
-        category VARCHAR(64),
-        label VARCHAR(191),
-        notes TEXT,
-        added_by VARCHAR(64),
-        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;]])
-
-    local existing = exports.oxmysql:executeSync([[SELECT COUNT(1) AS cnt
-        FROM information_schema.statistics
-        WHERE table_schema = DATABASE() AND table_name = 'ped_whitelist' AND index_name = 'idx_ped_category'
+    exports.oxmysql:execute([[ 
+        CREATE TABLE IF NOT EXISTS la_flags (
+            name VARCHAR(64) PRIMARY KEY,
+            value TINYINT(1) NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     ]])
 
-    local count = 0
-    if existing and existing[1] and existing[1].cnt ~= nil then
-        count = tonumber(existing[1].cnt) or 0
-    end
+    exports.oxmysql:execute([[ 
+        CREATE TABLE IF NOT EXISTS ped_whitelist (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            model VARCHAR(191) NOT NULL UNIQUE,
+            category VARCHAR(64),
+            label VARCHAR(191),
+            notes TEXT,
+            added_by VARCHAR(64),
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ]])
 
-    if count == 0 then
-        exports.oxmysql:execute([[CREATE INDEX idx_ped_category ON ped_whitelist (category);]])
-    end
+    exports.oxmysql:execute([[ 
+        CREATE INDEX IF NOT EXISTS idx_ped_category ON ped_whitelist (category);
+    ]])
 
     emitLog("info", "DB bootstrap complete")
 end
@@ -192,17 +175,7 @@ local function registerCommands()
 end
 
 function NPCServer.init(opts)
-    if initialized then
-        return { ok = true, alreadyInitialized = true }
-    end
-
     mergeConfig(opts)
-
-    local ok, err = ensureOxMySQL()
-    if not ok then
-        return { ok = false, err = err }
-    end
-
     bootstrapTables()
     registerCallbacks()
     registerCommands()
@@ -216,9 +189,10 @@ function NPCServer.init(opts)
         seedOnce()
     end)
 
-    initialized = true
     emitLog("info", "v1.4.1 server module initialized")
     return { ok = true }
 end
+
+NPCServer.init(Config)
 
 return NPCServer

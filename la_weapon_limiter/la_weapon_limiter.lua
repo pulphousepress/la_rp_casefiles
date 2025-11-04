@@ -2,17 +2,12 @@ local Config = require("config")
 local SharedStore = require("ph_shared").new("la_weapon_limiter")
 
 local WeaponLimiter = {}
-local initialized = false
 
 local function mergeConfig(opts)
     if type(opts) ~= 'table' then return end
     for key, value in pairs(opts) do
         Config[key] = value
     end
-end
-
-local function emitLog(level, message)
-    print(string.format("[la_weapon_limiter][%s] %s", level, message))
 end
 
 local function notify(source, msg, kind)
@@ -106,34 +101,16 @@ local function recheckInventory(_, newJob)
     end
 end
 
-local function ensureDependencies()
-    if not exports or not exports.ox_inventory then
-        return false, 'ox_inventory export not found'
-    end
-    if type(RegisterNetEvent) ~= 'function' then
-        return false, 'RegisterNetEvent missing'
-    end
-    return true
-end
-
 function WeaponLimiter.init(opts)
-    if initialized then
-        return { ok = true, alreadyInitialized = true }
-    end
-
     mergeConfig(opts)
-
-    local ok, err = ensureDependencies()
-    if not ok then
-        return { ok = false, err = err }
-    end
 
     RegisterNetEvent('ox_inventory:weaponEquipped', onWeaponEquipped)
     RegisterNetEvent('QBCore:Server:OnJobUpdate', recheckInventory)
 
-    emitLog('info', 'enforcement mode: ' .. Config.Mode)
-    initialized = true
+    print('[la_weapon_limiter] enforcement mode: ' .. Config.Mode)
     return { ok = true }
 end
+
+WeaponLimiter.init(Config)
 
 return WeaponLimiter

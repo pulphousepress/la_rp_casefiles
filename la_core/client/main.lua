@@ -1,52 +1,87 @@
-local Config = require("config")
+-- client/main.lua (la_core client helper)
+-- Local state only, no globals
+local client = {}
+local isAppearanceOpen = false
+local lastCodexVersion = "unknown"
 
-local CoreClient = {}
-local initialized = false
-
-local function mergeConfig(opts)
-    if type(opts) ~= "table" then return end
-    for key, value in pairs(opts) do
-        Config[key] = value
-    end
+-- safe print wrapper (toggle debug easily)
+local function dbg(...)
+    print("[la_core:client]", ...)
 end
 
-local function validateOptions(opts)
-    if opts == nil then
-        return true
-    end
-
-    if type(opts) ~= "table" then
-        return false, "expected table for options"
-    end
-
-    if opts.StatusCommand and type(opts.StatusCommand) ~= "string" then
-        return false, "StatusCommand must be string"
-    end
-
+-- Open/close appearance NUI (safe: checks before calling NUI)
+local function openAppearance()
+    if isAppearanceOpen then return false, "already_open" end
+    isAppearanceOpen = true
+    -- If you have an NUI, this will focus it. If not, this is harmless (no NUI).
+    SetNuiFocus(true, true)
+    SendNUIMessage({ action = "openAppearance" })
+    dbg("Appearance opened")
     return true
 end
 
-function CoreClient.init(opts)
-    if initialized then
-        return { ok = true, alreadyInitialized = true }
-    end
-
-    local ok, err = validateOptions(opts)
-    if not ok then
-        return { ok = false, err = err }
-    end
-
-    mergeConfig(opts)
-
-    local commandName = Config.StatusCommand or "la_status"
-
-    RegisterCommand(commandName, function()
-        print("[la_core] Active=true")
-    end, false)
-
-    initialized = true
-
-    return { ok = true, command = commandName }
+local function closeAppearance()
+    if not isAppearanceOpen then return false, "not_open" end
+    isAppearanceOpen = false
+    SetNuiFocus(false, false)
+    SendNUIMessage({ action = "closeAppearance" })
+    dbg("Appearance closed")
+    return true
 end
 
-return CoreClient
+-- Toggle function (public)
+client.toggleAppearance = function()
+    if isAppearanceOpen then
+        return closeAppearance()
+    else
+        return openAppearance()
+    end
+end
+
+-- Client command: /la_status
+-- prints client-side status and attempts to request server-side status
+RegisterCommand("la_status", function()
+    dbg("Active=true; appearance_open=" .. tostring(isAppearanceOpen) .. "; codex_version=" .. tostring(lastCodexVersion))
+
+    -- Try to request server status via an event. Server snippet below (optional).
+    local requested = false
+    local cbName = "la_core:client:statusCallback_" .. tostring(math.random(100000,999999))
+    AddEventHandler(cbName, function(tbl)
+        -- Basic defensive validation
+        if type(tbl) == "table" then
+            dbg("Server status:", tbl.server or "nil", "codex_version:", tbl.codex_version or "nil")
+        else
+            dbg("Server status callback received unexpected type")
+        end
+    end)
+    -- Fire server event with callback name - server can TriggerClientEvent(cbName, source, payload)
+    TriggerServerEvent("la_core:server:requestStatus", cbName)
+end, false)
+
+-- Listen for server-initiated codex version update (optional)
+-- The server may broadcast `la_core:ClientCodexLoaded` with a payload { version = "x.y.z" }
+RegisterNetEvent("la_core:ClientCodexLoaded")
+AddEventHandler("la_core:ClientCodexLoaded", function(payload)
+    if type(payload) == "table" and payload.version then
+        lastCodexVersion = tostring(payload.version)
+        dbg("Client noticed codex load; version=", lastCodexVersion)
+    else
+        dbg("Client received la_core:ClientCodexLoaded with invalid payload")
+    end
+end)
+
+-- NUI callback handler (if you implement NUI)
+RegisterNUICallback("close", function(data, cb)
+    closeAppearance()
+    cb({ ok = true })
+end)
+
+-- Exported functions for other client resources
+exports("IsAppearanceOpen", function() return isAppearanceOpen end)
+exports("ToggleAppearance", function() return client.toggleAppearance() end)
+
+-- Client ready message
+CreateThread(function()
+    Wait(500) -- give some time for resource startup
+    dbg("client helper ready")
+end)
