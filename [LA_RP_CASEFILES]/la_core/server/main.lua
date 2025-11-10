@@ -19,6 +19,17 @@ state.resource = RES
 local cache = state.cache
 local manifest = state.codex.manifest
 
+local AddonsRegistry = require('addons_registry')
+local Commands = require('commands')
+
+local defaultCategories = {
+  { name = 'core', label = 'Core Systems', description = 'Primary LA framework modules' },
+  { name = 'integration', label = 'Integrations', description = 'Bridges into external services' },
+  { name = 'gameplay', label = 'Gameplay', description = 'Mechanics and narrative content' },
+  { name = 'ui', label = 'User Interface', description = 'Interface and NUI components' },
+  { name = 'utility', label = 'Utilities', description = 'Supporting helpers and infrastructure' },
+}
+
 local function emit(level, message)
   local msg = string.format('[la_core][%s] %s', level, message)
   state.lastLog = msg
