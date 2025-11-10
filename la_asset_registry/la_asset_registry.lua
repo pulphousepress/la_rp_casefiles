@@ -74,13 +74,30 @@ Config.ExceptionPrefixes = {
 local recentlyBlocked = {}
 
 local function isWhitelisted(model, list)
+    local modelHash
+    local modelName
+
+    if type(model) == 'number' then
+        modelHash = model
+    elseif type(model) == 'string' then
+        modelHash = GetHashKey(model)
+        modelName = model:lower()
+    end
+
     for _, name in ipairs(list) do
-        if type(name) == "string" then
-            if model == name or model == GetHashKey(name) then return true end
-        elseif type(name) == "number" then
-            if model == name then return true end
+        if type(name) == 'string' then
+            local nameLower = name:lower()
+            if (modelName and modelName == nameLower)
+                or (modelHash and modelHash == GetHashKey(name)) then
+                return true
+            end
+        elseif type(name) == 'number' then
+            if modelHash and modelHash == name then
+                return true
+            end
         end
     end
+
     return false
 end
 
@@ -148,7 +165,9 @@ AddEventHandler('entityCreating', function(entity)
 
     if entityType == 2 then -- Vehicle
         local name = GetDisplayNameFromVehicleModel(model) or tostring(model)
-        local allowed = isWhitelisted(name, Config.WhitelistedVehicles) or isNamespaced(name)
+        local allowed = isWhitelisted(model, Config.WhitelistedVehicles)
+            or isWhitelisted(name, Config.WhitelistedVehicles)
+            or isNamespaced(name)
         if not allowed then
             local msg = ('🚫 Vehicle blocked: %s'):format(name)
             local log = getSpawnSourceInfo(src, model, entityType)
