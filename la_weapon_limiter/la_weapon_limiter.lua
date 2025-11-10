@@ -1,107 +1,90 @@
--- la_weapon_limiter.lua
--- Author: Los Animales RP
--- Description: Restrict weapon usage to era-appropriate jobs only
+local Config = require("config")
+local SharedStore = require("ph_shared").new("la_weapon_limiter")
 
-local Config = {}
+local WeaponLimiter = {}
+local initialized = false
 
--- Enforcement mode:
--- "off"   = disable
--- "warn"  = allow but notify
--- "block" = prevent equipping
--- "strip" = remove the weapon entirely
-Config.Mode = "block"
+local function mergeConfig(opts)
+    if type(opts) ~= 'table' then return end
+    for key, value in pairs(opts) do
+        Config[key] = value
+    end
+end
 
--- Job → Weapon list mapping (WEAPON_ names)
-Config.WeaponJobWhitelist = {
-    police = {
-        "WEAPON_PISTOL",
-        "WEAPON_REVOLVER",
-        "WEAPON_FLARE",
-        "WEAPON_PUMPSHOTGUN",
-        "WEAPON_BAT"
-    },
-    detective = {
-        "WEAPON_PISTOL",
-        "WEAPON_DOUBLEACTION",
-        "WEAPON_KNUCKLE",
-    },
-    mob = {
-        "WEAPON_GUSENBERG",
-        "WEAPON_SAWNOFFSHOTGUN",
-        "WEAPON_CLEAVER",
-        "WEAPON_SWITCHBLADE"
-    },
-    fire = {
-        "WEAPON_HATCHET",
-        "WEAPON_FLARE"
-    },
-    farmer = {
-        "WEAPON_MUSKET",
-        "WEAPON_HATCHET"
-    },
-    bartender = {
-        "WEAPON_KNIFE",
-        "WEAPON_BAT"
-    },
-}
+local function emitLog(level, message)
+    print(string.format("[la_weapon_limiter][%s] %s", level, message))
+end
 
--- Messages
-local function notify(source, msg)
+local function notify(source, msg, kind)
     TriggerClientEvent('ox_lib:notify', source, {
-        type = 'error',
+        type = kind or 'error',
         description = msg,
         duration = 5000
     })
 end
 
--- Check if weapon is allowed for job
 local function isAllowed(job, weapon)
-    local list = Config.WeaponJobWhitelist[job]
-    if not list then return false end
-    for _, v in pairs(list) do
-        if v == weapon then return true end
+    local cacheKey = string.format("allow:%s:%s", job or 'unknown', weapon or 'unknown')
+    local cached = SharedStore:get(cacheKey)
+    if cached.ok and cached.value ~= nil then
+        return cached.value
     end
-    return false
+
+    local list = Config.WeaponJobWhitelist[job]
+    local allowed = false
+    if list then
+        for _, v in pairs(list) do
+            if v == weapon then
+                allowed = true
+                break
+            end
+        end
+    end
+
+    SharedStore:set(cacheKey, allowed)
+    return allowed
 end
 
--- Strip weapon if needed
-local function stripWeapon(src, weapon)
+local function stripWeapon(src, rawWeapon, displayName)
     local xPlayer = exports.ox_inventory:GetPlayer(src)
     if not xPlayer then return end
-    local has = xPlayer:Search('weapon', weapon)
-    if has then
-        xPlayer:RemoveItem('weapon', weapon, 1)
-        notify(src, "That weapon is not authorized for your job.")
+    local ok, has = pcall(function()
+        return xPlayer:Search('count', rawWeapon)
+    end)
+    if not ok then
+        notify(src, 'Unable to verify weapon ownership', 'error')
+        return
+    end
+    if has and has > 0 then
+        xPlayer:RemoveItem(rawWeapon, 1)
+        notify(src, (displayName or rawWeapon) .. " removed due to job restriction.")
     end
 end
 
--- On weapon equipped
-RegisterNetEvent('ox_inventory:weaponEquipped', function(weapon)
+local function onWeaponEquipped(weapon)
     local src = source
     local xPlayer = exports.ox_inventory:GetPlayer(src)
     if not xPlayer then return end
 
-    local job = xPlayer.job.name
+    local job = xPlayer.job and xPlayer.job.name or 'unemployed'
     local weaponName = string.upper(weapon)
-
     local allowed = isAllowed(job, weaponName)
 
     if Config.Mode == "off" then return end
 
     if not allowed then
         if Config.Mode == "warn" then
-            notify(src, "⚠️ This weapon is not authorized for your current job.")
+            notify(src, "⚠️ This weapon is not authorized for your current job.", 'warning')
         elseif Config.Mode == "block" then
             notify(src, "❌ Weapon blocked: not allowed for your job.")
             CancelEvent()
         elseif Config.Mode == "strip" then
-            stripWeapon(src, weaponName)
+            stripWeapon(src, weapon, weaponName)
         end
     end
-end)
+end
 
--- Recheck inventory on job change (recommended)
-RegisterNetEvent('QBCore:Server:OnJobUpdate', function(sourceJob, newJob)
+local function recheckInventory(_, newJob)
     local src = source
     Wait(500)
     local xPlayer = exports.ox_inventory:GetPlayer(src)
@@ -113,12 +96,44 @@ RegisterNetEvent('QBCore:Server:OnJobUpdate', function(sourceJob, newJob)
             local weaponName = string.upper(item.name)
             if not isAllowed(newJob.name, weaponName) then
                 if Config.Mode == "strip" then
-                    xPlayer:RemoveItem('weapon', weaponName, 1)
+                    xPlayer:RemoveItem(item.name, 1)
                     notify(src, weaponName .. " removed due to job restriction.")
                 elseif Config.Mode == "warn" then
-                    notify(src, weaponName .. " is not allowed for your job.")
+                    notify(src, weaponName .. " is not allowed for your job.", 'warning')
                 end
             end
         end
     end
-end)
+end
+
+local function ensureDependencies()
+    if not exports or not exports.ox_inventory then
+        return false, 'ox_inventory export not found'
+    end
+    if type(RegisterNetEvent) ~= 'function' then
+        return false, 'RegisterNetEvent missing'
+    end
+    return true
+end
+
+function WeaponLimiter.init(opts)
+    if initialized then
+        return { ok = true, alreadyInitialized = true }
+    end
+
+    mergeConfig(opts)
+
+    local ok, err = ensureDependencies()
+    if not ok then
+        return { ok = false, err = err }
+    end
+
+    RegisterNetEvent('ox_inventory:weaponEquipped', onWeaponEquipped)
+    RegisterNetEvent('QBCore:Server:OnJobUpdate', recheckInventory)
+
+    emitLog('info', 'enforcement mode: ' .. Config.Mode)
+    initialized = true
+    return { ok = true }
+end
+
+return WeaponLimiter

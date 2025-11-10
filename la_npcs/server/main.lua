@@ -1,55 +1,66 @@
---------------------------------------------
--- Los Animales RP : la_npcs v1.4.1
--- Purpose: One-time DB seed + JSON import with category tags
--- Notes:
---  - Creates tables/indexes if missing
---  - Seeds only once (flagged in la_flags)
---  - Manual re-seed: /la_import_peds (ACE: la.npcsuite.admin or console)
---------------------------------------------
+local Config = require("config")
+local Shared = require("ph_shared").new("la_npcs")
 
-local RES = GetCurrentResourceName()
+local NPCServer = {}
+local initialized = false
 
-CreateThread(function()
-    print("[la_npcs] v1.4.1 (one-time seed + JSON sync + category tagging) initializing...")
-end)
+local function emitLog(level, message)
+    local msg = string.format("[la_npcs][%s] %s", level, message)
+    print(msg)
+    return msg
+end
 
--------------------------------------------------
--- DB BOOTSTRAP: tables & indexes
--------------------------------------------------
-CreateThread(function()
-    -- Meta flags table to track one-time operations
-    exports.oxmysql:execute([[
-        CREATE TABLE IF NOT EXISTS la_flags (
-            name VARCHAR(64) PRIMARY KEY,
-            value TINYINT(1) NOT NULL DEFAULT 0,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+local function mergeConfig(opts)
+    if type(opts) ~= "table" then return end
+    for key, value in pairs(opts) do
+        Config[key] = value
+    end
+end
+
+local function ensureOxMySQL()
+    if not exports or not exports.oxmysql then
+        return false, "oxmysql export not found"
+    end
+    if type(exports.oxmysql.execute) ~= "function" or type(exports.oxmysql.executeSync) ~= "function" then
+        return false, "oxmysql exports missing execute/executeSync"
+    end
+    return true
+end
+
+local function bootstrapTables()
+    exports.oxmysql:execute([[CREATE TABLE IF NOT EXISTS la_flags (
+        name VARCHAR(64) PRIMARY KEY,
+        value TINYINT(1) NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;]])
+
+    exports.oxmysql:execute([[CREATE TABLE IF NOT EXISTS ped_whitelist (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        model VARCHAR(191) NOT NULL UNIQUE,
+        category VARCHAR(64),
+        label VARCHAR(191),
+        notes TEXT,
+        added_by VARCHAR(64),
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;]])
+
+    local existing = exports.oxmysql:executeSync([[SELECT COUNT(1) AS cnt
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE() AND table_name = 'ped_whitelist' AND index_name = 'idx_ped_category'
     ]])
 
-    -- Main whitelist
-    exports.oxmysql:execute([[
-        CREATE TABLE IF NOT EXISTS ped_whitelist (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            model VARCHAR(191) NOT NULL UNIQUE,
-            category VARCHAR(64),
-            label VARCHAR(191),
-            notes TEXT,
-            added_by VARCHAR(64),
-            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    ]])
+    local count = 0
+    if existing and existing[1] and existing[1].cnt ~= nil then
+        count = tonumber(existing[1].cnt) or 0
+    end
 
-    -- Helpful indexes (safe if already exist)
-    exports.oxmysql:execute([[
-        CREATE INDEX IF NOT EXISTS idx_ped_category ON ped_whitelist (category);
-    ]])
+    if count == 0 then
+        exports.oxmysql:execute([[CREATE INDEX idx_ped_category ON ped_whitelist (category);]])
+    end
 
-    print("[la_npcs] DB bootstrap complete.")
-end)
+    emitLog("info", "DB bootstrap complete")
+end
 
--------------------------------------------------
--- SAFE BASE SEED (minimal set for empty DBs)
--------------------------------------------------
 local baseSeed = {
     { model = "a_c_cat_01",    label = "Cat (ambient)", notes = "Default GTA animal ped", category = "animal_models",  added_by = "server_import" },
     { model = "a_c_husky",     label = "Husky (dog)",   notes = "Ambient dog ped",        category = "animal_models",  added_by = "server_import" },
@@ -57,9 +68,6 @@ local baseSeed = {
     { model = "Doorman01SMY",  label = "Doorman",       notes = "Door staff ped",         category = "scenario_male",  added_by = "server_import" },
 }
 
--------------------------------------------------
--- INSERT HELPERS
--------------------------------------------------
 local function insertPeds(entries, quiet)
     if type(entries) ~= "table" or #entries == 0 then return 0 end
     local inserted = 0
@@ -71,7 +79,7 @@ local function insertPeds(entries, quiet)
                 if type(result) == "table" and result.affectedRows and result.affectedRows > 0 then
                     inserted = inserted + 1
                     if not quiet then
-                        print(("[la_npcs] + %s (%s)"):format(e.model, e.category or "unknown"))
+                        emitLog("info", ("+ %s (%s)"):format(e.model, e.category or "unknown"))
                     end
                 end
             end
@@ -81,14 +89,14 @@ local function insertPeds(entries, quiet)
 end
 
 local function loadPedsJSON()
-    local file = LoadResourceFile(RES, "data/peds.json")
+    local file = LoadResourceFile(GetCurrentResourceName(), "data/peds.json")
     if not file then
-        print("[la_npcs] WARN: data/peds.json not found; skipping JSON import.")
+        emitLog("warn", "data/peds.json not found; skipping JSON import")
         return {}
     end
     local ok, data = pcall(json.decode, file)
     if not ok or type(data) ~= "table" then
-        print("[la_npcs] ERROR: Failed to decode data/peds.json; skipping.")
+        emitLog("error", "Failed to decode data/peds.json; skipping")
         return {}
     end
 
@@ -109,82 +117,108 @@ local function loadPedsJSON()
     return bulk
 end
 
--------------------------------------------------
--- ONE-TIME SEED LOGIC
--------------------------------------------------
 local function getFlag(name)
+    local cache = Shared:get("flag:" .. name)
+    if cache.ok and cache.value ~= nil then
+        return cache.value
+    end
     local r = exports.oxmysql:executeSync("SELECT value FROM la_flags WHERE name = ? LIMIT 1", { name })
-    if r and r[1] then return tonumber(r[1].value) == 1 end
-    return false
+    local value = false
+    if r and r[1] then
+        value = tonumber(r[1].value) == 1
+    end
+    Shared:set("flag:" .. name, value)
+    return value
 end
 
 local function setFlag(name, val)
     exports.oxmysql:execute("REPLACE INTO la_flags (name, value) VALUES (?, ?)", { name, val and 1 or 0 })
+    Shared:set("flag:" .. name, val and true or false)
 end
 
 local function seedOnce()
-    -- If already seeded, skip
     if getFlag("ped_seed") then
-        print("[la_npcs] Seed previously completed; skipping.")
+        emitLog("info", "Seed previously completed; skipping")
         return
     end
 
-    print("[la_npcs] Running one-time seed...")
+    emitLog("info", "Running one-time seed")
     insertPeds(baseSeed, true)
 
     local jsonBulk = loadPedsJSON()
     if #jsonBulk > 0 then
-        print(("[la_npcs] Importing %d peds from JSON..."):format(#jsonBulk))
+        emitLog("info", ("Importing %d peds from JSON"):format(#jsonBulk))
         insertPeds(jsonBulk, true)
     end
 
     setFlag("ped_seed", true)
-    print("[la_npcs] Seed complete.")
+    emitLog("info", "Seed complete")
 end
 
--------------------------------------------------
--- RESOURCE START: seed once, then ready
--------------------------------------------------
-AddEventHandler("onResourceStart", function(resource)
-    if resource ~= RES then return end
-    seedOnce()
-end)
+local function registerCallbacks()
+    lib.callback.register("la_npcs:getWhitelist", function()
+        local results = exports.oxmysql:executeSync("SELECT model FROM ped_whitelist")
+        if not results or #results == 0 then
+            emitLog("warn", "No entries in ped_whitelist; returning nil")
+            return nil
+        end
+        local models = {}
+        for _, row in ipairs(results) do
+            models[#models+1] = row.model
+        end
+        emitLog("info", ("Synced %d ped models from DB → clients"):format(#models))
+        return models
+    end)
+end
 
--------------------------------------------------
--- ADMIN COMMANDS
--------------------------------------------------
-RegisterCommand("la_import_peds", function(source)
-    local isConsole = (source == 0)
-    local allowed = isConsole or IsPlayerAceAllowed(source, "la.npcsuite.admin") or IsPlayerAceAllowed(source, "admin")
-    if not allowed then
-        print("[la_npcs] Permission denied for /la_import_peds")
-        return
+local function registerCommands()
+    RegisterCommand("la_import_peds", function(source)
+        local isConsole = (source == 0)
+        local allowed = isConsole or IsPlayerAceAllowed(source, "la.npcsuite.admin") or IsPlayerAceAllowed(source, "admin")
+        if not allowed then
+            emitLog("warn", "Permission denied for /la_import_peds")
+            return
+        end
+
+        emitLog("info", "Manual import starting")
+        insertPeds(baseSeed, false)
+        local bulk = loadPedsJSON()
+        if #bulk > 0 then
+            emitLog("info", ("Importing %d peds from JSON"):format(#bulk))
+            insertPeds(bulk, false)
+        end
+        emitLog("info", "Manual import complete")
+    end, true)
+end
+
+function NPCServer.init(opts)
+    if initialized then
+        return { ok = true, alreadyInitialized = true }
     end
 
-    -- Re-seed on demand: base + JSON (idempotent via INSERT IGNORE)
-    print("[la_npcs] Manual import starting...")
-    insertPeds(baseSeed, false)
-    local bulk = loadPedsJSON()
-    if #bulk > 0 then
-        print(("[la_npcs] Importing %d peds from JSON..."):format(#bulk))
-        insertPeds(bulk, false)
-    end
-    print("[la_npcs] Manual import complete.")
-end, true)
+    mergeConfig(opts)
 
--------------------------------------------------
--- DB → CLIENT SYNC CALLBACK
--------------------------------------------------
-lib.callback.register("la_npcs:getWhitelist", function()
-    local results = exports.oxmysql:executeSync("SELECT model FROM ped_whitelist")
-    if not results or #results == 0 then
-        print("[la_npcs] No entries in ped_whitelist; returning nil.")
-        return nil
+    local ok, err = ensureOxMySQL()
+    if not ok then
+        return { ok = false, err = err }
     end
-    local models = {}
-    for _, row in ipairs(results) do
-        models[#models+1] = row.model
+
+    bootstrapTables()
+    registerCallbacks()
+    registerCommands()
+
+    if Config.seedOnStart ~= false then
+        seedOnce()
     end
-    print(("[la_npcs] Synced %d ped models from DB → clients."):format(#models))
-    return models
-end)
+
+    AddEventHandler("onResourceStart", function(resource)
+        if resource ~= GetCurrentResourceName() then return end
+        seedOnce()
+    end)
+
+    initialized = true
+    emitLog("info", "v1.4.1 server module initialized")
+    return { ok = true }
+end
+
+return NPCServer

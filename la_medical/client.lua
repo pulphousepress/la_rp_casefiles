@@ -1,25 +1,41 @@
--- client.lua
--- 1950s Basic Hospital Revive for Los Animales RP
+local Config = require("config")
 
-local reviveCoords = vector3(354.23, -1403.25, 32.5) -- Pillbox (adjust if you want county hospital)
+local MedicalClient = {}
+local initialized = false
 
-AddEventHandler('baseevents:onPlayerDied', function()
-    Wait(10000) -- Time unconscious
-    DoScreenFadeOut(1000)
-    Wait(1500)
+local function mergeConfig(opts)
+    if type(opts) ~= 'table' then return end
+    for key, value in pairs(opts) do
+        Config[key] = value
+    end
+end
 
-    -- Move player to hospital
+local function revivePlayer()
     local ped = PlayerPedId()
-    NetworkResurrectLocalPlayer(reviveCoords.x, reviveCoords.y, reviveCoords.z, 0.0, true, false)
+    NetworkResurrectLocalPlayer(Config.reviveCoords.x, Config.reviveCoords.y, Config.reviveCoords.z, 0.0, true, false)
     ClearPedTasksImmediately(ped)
     RemoveAllPedWeapons(ped, true)
-
     Wait(500)
-    TriggerEvent('ox_lib:notify', {
-        title = 'Revived at Hospital',
-        description = 'You were treated by a local doctor.',
-        type = 'inform'
-    })
+    TriggerEvent('ox_lib:notify', Config.notify)
+    DoScreenFadeIn(Config.fadeDurationMs)
+end
 
-    DoScreenFadeIn(1000)
-end)
+function MedicalClient.init(opts)
+    if initialized then
+        return { ok = true, alreadyInitialized = true }
+    end
+
+    mergeConfig(opts)
+
+    AddEventHandler('baseevents:onPlayerDied', function()
+        Wait(Config.respawnDelayMs)
+        DoScreenFadeOut(Config.fadeDurationMs)
+        Wait(1500)
+        revivePlayer()
+    end)
+
+    initialized = true
+    return { ok = true }
+end
+
+return MedicalClient
