@@ -1,9 +1,0 @@
-la_population/
-├── fxmanifest.lua
-├── config.lua
-├── client/
-│   ├── main.lua
-│   ├── world_density.lua
-│   └── npc_manager.lua
-└── server/
-    └── main.lua
