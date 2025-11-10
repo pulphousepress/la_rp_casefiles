@@ -1,46 +1,74 @@
 # la_admin
 
-`la_admin` provides an in‑game administrative panel accessed via a keybind (default **F10**). The panel allows server operators to manage the Los Animales RP environment without using console commands. Actions include toggling enforcement modes for assets and weapons and controlling the population system.
+`la_admin` is the operator control surface for Los Animales RP. It exposes a centralized addon registry, status commands, and a s
+keleton client ready for future NUI work. All gameplay-facing controls must route through this resource so server staff have a s
+ingular touchpoint.
 
-## Features
+## Responsibilities
 
-* **Toggle Asset Registry Mode** – Switch between `off`, `warn` and `block` for `la_asset_registry` at runtime.
-* **Toggle Weapon Limiter Mode** – Switch between `off`, `warn`, `block` and `strip` for `la_weapon_limiter`.
-* **Resync or Clear NPCs** – Trigger `la_pop_resync` or `la_pop_clear` commands to refresh or remove static NPCs.
-* **Protected Access** – Only users with the configured ACE permission (default `command`) may open the panel or perform actions.
+* Host the addon registry used by first- and third-party systems.
+* Provide status and addon inventory commands (`/la_status`, `/la_addons`).
+* Offer exports (`RegisterAddon`, `GetRegisteredAddons`, `GetAddonsByCapability`) so addons can announce capabilities at runtime.
+* Query `la_core` for health snapshots to power dashboards and diagnostics.
 
-## Usage
+## Layout
 
-1. **Ensure** the resource after your core scripts:
-   ```cfg
-   ensure la_addons/la_radio
-   ensure la_pop
-   ensure la_asset_registry
-   ensure la_weapon_limiter
-   ensure la_admin
-   ```
-2. **Permissions:** Grant the desired Ace permission (default `command`) to your admin group. For example in `server.cfg`:
-   ```cfg
-   add_ace group.admin command allow
-   ```
-3. **Open Panel:** Press **F10** in game (or whatever key you set in `config.lua`). The panel will appear centered on the screen. Press **ESC** or F10 again to close it.
-4. **Perform Actions:** Select a mode from the dropdowns and click **Apply**, or click the population buttons. A status message will display confirmation or errors.
+```
+server/main.lua          # boots the registry, wires commands, exposes exports
+server/addons_registry.lua # core registry implementation and normalization helpers
+server/commands.lua      # `/la_status` and `/la_addons` command handlers
+client/main.lua          # placeholder for future NUI logic
+client/ui_fallback.lua   # temporary chat-based feedback
+config.lua               # toggle keybinds, ACE principal, dev overrides
+```
 
-## Configuration
+## Exports
 
-Edit `config.lua` to adjust:
+| Export | Description |
+| --- | --- |
+| `RegisterAddon(descriptor)` | Register an addon with fields such as `name`, `resource`, `version`, `hooks`, `provides`. Returns `true, descriptor` on success. |
+| `GetRegisteredAddons()` | Returns an array of registered addon descriptors sorted by registration order. |
+| `GetAddonsByCapability(capability)` | Returns addons that advertise the specified capability (case-insensitive). |
 
-| Key | Description | Default |
-|---|---|---|
-| `Debug` | Print debug info. | `true` |
-| `Key` | Key to toggle panel (string recognised by FiveM). | `"F10"` |
-| `PermissionAce` | ACE permission required to open panel. | `"command"` |
-| `Resources` | Table mapping friendly names to resource names. Must match your resources for asset registry, weapon limiter and population. | See file |
+### Descriptor schema
 
-## Extending
+```lua
+exports.la_admin:RegisterAddon({
+    name = 'Weather Control',
+    resource = GetCurrentResourceName(),
+    version = '1.0.0',
+    hooks = { 'onReady', 'onShutdown' },
+    provides = { 'weather', 'time_control' },
+    maintainer = 'systems@losanimales.dev',
+})
+```
 
-* **Additional Actions:** Add buttons in `html/index.html` and handle them in `html/app.js`. On the server, extend the `la_admin:action` event handler to support new commands or exports.
-* **UI Design:** Customise the panel appearance by editing `html/style.css`. Add icons, animations or re‑structure the layout.
-* **Live Data:** Implement periodic fetches of current modes and display them in the UI so admins can see the current state at a glance.
+The registry deduplicates by `resource` name and keeps the latest descriptor. Capabilities and hooks are stored as sorted, lowerc
+ased strings for easy querying.
 
-`la_admin` simplifies server management and helps enforce the era‑specific rules of Los Animales RP through an easy to use interface.
+## Commands
+
+* `/la_status` — prints codex health along with cached counts and addon totals.
+* `/la_addons [capability]` — lists registered addons. When a capability is provided, results are filtered to matching entries.
+
+Command access is guarded by `Config.AcePrincipal` (`group.admin` by default). Enable `Config.AllowAnyoneInDev = true` while buil
+ding locally to bypass ACE checks.
+
+## Config
+
+`config.lua` exposes:
+
+```lua
+Config = {
+    Debug = false,
+    ToggleKey = 'F10',
+    Command = 'la_admin',
+    AllowAnyoneInDev = true,
+    AcePrincipal = 'group.admin',
+    StatusCommand = 'la_status',
+    AddonsCommand = 'la_addons',
+}
+```
+
+Adjust keybinds and ACE principal to fit your server policy. The client scripts remain placeholder-only; when the NUI is implemen
+ted it should consume the registry exports instead of direct server calls.

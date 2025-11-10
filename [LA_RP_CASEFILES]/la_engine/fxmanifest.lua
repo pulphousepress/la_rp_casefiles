@@ -13,11 +13,15 @@ shared_script 'config.lua'
 
 server_scripts {
     'server/main.lua',
-    'server/modules/weather.lua'
+    'server/weather_controller.lua',
+    'server/era_vehicles.lua',
+    'server/ped_gate.lua'
 }
 
 server_exports {
-    'GetAllowedVehicleModels'
+    'GetAllowedVehicleModels',
+    'IsVehicleAllowed',
+    'IsPedAllowed'
 }
 
 client_scripts {

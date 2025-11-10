@@ -76,33 +76,43 @@ local function validateVehicle(entry, index)
         return false
     end
 
-    local name = entry.name
-    if type(name) ~= "string" or name == "" then
-        warn(string.format("vehicles[%d] is missing a valid 'name'", index))
+    if type(entry.label) ~= "string" or entry.label == "" then
+        warn(string.format("vehicles[%s] must include a 'label' string", model))
         return false
     end
 
-    if type(entry.class) ~= "string" or entry.class == "" then
-        warn(string.format("vehicles[%s] must include a 'class' string", model))
+    if type(entry.era_tag) ~= "string" or entry.era_tag == "" then
+        warn(string.format("vehicles[%s] must include an 'era_tag' string", model))
         return false
     end
 
-    if type(entry.price) ~= "number" then
-        warn(string.format("vehicles[%s] must include a numeric 'price'", model))
+    if type(entry.type) ~= "string" or entry.type == "" then
+        warn(string.format("vehicles[%s] must include a 'type' string", model))
         return false
     end
 
-    if entry.stock ~= nil then
-        if type(entry.stock) ~= "number" or entry.stock < 0 or math.floor(entry.stock) ~= entry.stock then
-            warn(string.format("vehicles[%s] has invalid 'stock' value", model))
+    if entry.allowed_factions ~= nil then
+        if type(entry.allowed_factions) ~= "table" or not isArray(entry.allowed_factions) then
+            warn(string.format("vehicles[%s] must provide 'allowed_factions' as an array", model))
             return false
         end
+
+        for idx, faction in ipairs(entry.allowed_factions) do
+            if type(faction) ~= "string" or faction == "" then
+                warn(string.format("vehicles[%s].allowed_factions[%d] must be a non-empty string", model, idx))
+                return false
+            end
+        end
     else
-        entry.stock = 0
+        entry.allowed_factions = {}
     end
 
-    local existing = vehiclesByModel[model]
-    if existing then
+    if entry.notes ~= nil and type(entry.notes) ~= "string" then
+        warn(string.format("vehicles[%s] has invalid 'notes' value", model))
+        return false
+    end
+
+    if vehiclesByModel[model] then
         warn(string.format("Duplicate vehicle model '%s' detected", model))
         return false
     end
@@ -123,13 +133,18 @@ local function validatePed(entry, index)
         return false
     end
 
-    if type(entry.role) ~= "string" or entry.role == "" then
-        warn(string.format("peds[%s] must include a 'role' string", model))
+    if type(entry.label) ~= "string" or entry.label == "" then
+        warn(string.format("peds[%s] must include a 'label' string", model))
         return false
     end
 
-    if entry.scenario ~= nil and type(entry.scenario) ~= "string" then
-        warn(string.format("peds[%s] has invalid 'scenario' value", model))
+    if type(entry.category) ~= "string" or entry.category == "" then
+        warn(string.format("peds[%s] must include a 'category' string", model))
+        return false
+    end
+
+    if entry.notes ~= nil and type(entry.notes) ~= "string" then
+        warn(string.format("peds[%s] has invalid 'notes' value", model))
         return false
     end
 
@@ -159,30 +174,14 @@ local function validateFaction(entry, index)
         return false
     end
 
-    if type(entry.type) ~= "string" or entry.type == "" then
-        warn(string.format("factions[%s] must include a 'type' string", id))
+    if type(entry.category) ~= "string" or entry.category == "" then
+        warn(string.format("factions[%s] must include a 'category' string", id))
         return false
     end
 
-    if entry.color ~= nil and type(entry.color) ~= "string" then
-        warn(string.format("factions[%s] has invalid 'color' value", id))
+    if entry.notes ~= nil and type(entry.notes) ~= "string" then
+        warn(string.format("factions[%s] has invalid 'notes' value", id))
         return false
-    end
-
-    if entry.permissions ~= nil then
-        if type(entry.permissions) ~= "table" or not isArray(entry.permissions) then
-            warn(string.format("factions[%s] must provide 'permissions' as an array", id))
-            return false
-        end
-
-        for permIndex, perm in ipairs(entry.permissions) do
-            if type(perm) ~= "string" or perm == "" then
-                warn(string.format("factions[%s].permissions[%d] must be a non-empty string", id, permIndex))
-                return false
-            end
-        end
-    else
-        entry.permissions = {}
     end
 
     if factionsById[id] then
@@ -245,6 +244,7 @@ end
 local function bootstrapCodex()
     resetLookups()
 
+    local summary = {}
     for key, spec in pairs(DATA_FILES) do
         local entries = readJsonFile(spec.path, spec.optional)
         if entries then
@@ -258,7 +258,11 @@ local function bootstrapCodex()
                 loadArray(key, entries, validateAddon)
             end
         end
+
+        summary[#summary + 1] = string.format("%s=%d", key, #codexData[key])
     end
+
+    print(string.format("%s Loaded datasets (%s)", LOG_PREFIX, table.concat(summary, ", ")))
 end
 
 local function ensureLoadedOnStart(resource)
@@ -275,7 +279,11 @@ if GetResourceState(RESOURCE_NAME) == "started" then
     bootstrapCodex()
 end
 
-function GetCodexData()
+function GetCodexData(dataType)
+    if dataType ~= nil then
+        return codexData[dataType] or {}
+    end
+
     return codexData
 end
 

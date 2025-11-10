@@ -1,23 +1,27 @@
 [
-  // Schema: Array of faction objects describing in-game organizations.
+  // Schema: Array of faction descriptors.
   // {
-  //   "id": string (unique faction identifier, required),
-  //   "name": string (display name, required),
-  //   "type": string (classification such as "government" or "civilian", required),
-  //   "color": string (RGB hex color used for UI, optional),
-  //   "permissions": array of strings (optional role permissions)
+  //   "id": string (unique identifier, required),
+  //   "name": string (display label, required),
+  //   "category": string (classification such as "law", "press", required),
+  //   "notes": string (optional notes for maintainers)
   // }
   {
-    "id": "lspd",
-    "name": "Los Santos Police Department",
-    "type": "government",
-    "color": "#1E90FF",
-    "permissions": ["issue_fines", "seize_evidence", "dispatch_access"]
+    "id": "lapd",
+    "name": "Los Angeles Police Department",
+    "category": "law",
+    "notes": "Primary municipal law enforcement for era-focused storylines."
   },
   {
-    "id": "weazel",
-    "name": "Weazel News",
-    "type": "civilian",
-    "permissions": ["broadcast_news"]
+    "id": "black_paw",
+    "name": "Black Paw Detective Agency",
+    "category": "private_investigator",
+    "notes": "Player-led detective collective frequently interfacing with LAPD."
+  },
+  {
+    "id": "dominion",
+    "name": "Dominion",
+    "category": "civic",
+    "notes": "Shadowy faction influencing citywide politics and commerce."
   }
 ]

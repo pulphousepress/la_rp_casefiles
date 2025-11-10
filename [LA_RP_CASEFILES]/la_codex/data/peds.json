@@ -1,17 +1,21 @@
 [
-  // Schema: Array of ped entries made available to scripts.
+  // Schema: Array of ped descriptors.
   // {
-  //   "model": string (ped model name, required),
-  //   "role": string (short descriptor of the ped's role, required),
-  //   "scenario": string (optional ambient scenario to use when spawning)
+  //   "model": string (ped model identifier, required),
+  //   "label": string (display label, required),
+  //   "category": string (classification such as "law", "civic", required),
+  //   "notes": string (optional descriptive notes)
   // }
   {
     "model": "s_m_y_cop_01",
-    "role": "mission_row_officer",
-    "scenario": "WORLD_HUMAN_COP_IDLES"
+    "label": "Mission Row Patrol",
+    "category": "law",
+    "notes": "Standard beat cop appearance for LAPD storylines."
   },
   {
     "model": "a_f_y_vinewood_04",
-    "role": "vinewood_civilian"
+    "label": "Vinewood Socialite",
+    "category": "civic",
+    "notes": "High society civilian often used for nightlife narratives."
   }
 ]
