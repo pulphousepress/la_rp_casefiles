@@ -1,0 +1,17 @@
+[
+  // Schema: Array of ped entries made available to scripts.
+  // {
+  //   "model": string (ped model name, required),
+  //   "role": string (short descriptor of the ped's role, required),
+  //   "scenario": string (optional ambient scenario to use when spawning)
+  // }
+  {
+    "model": "s_m_y_cop_01",
+    "role": "mission_row_officer",
+    "scenario": "WORLD_HUMAN_COP_IDLES"
+  },
+  {
+    "model": "a_f_y_vinewood_04",
+    "role": "vinewood_civilian"
+  }
+]

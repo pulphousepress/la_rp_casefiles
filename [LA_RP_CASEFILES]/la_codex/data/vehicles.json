@@ -1,0 +1,30 @@
+[
+  // Schema: Array of vehicle definitions used by the codex database.
+  // {
+  //   "model": string (vehicle spawn name, required),
+  //   "name": string (human readable label, required),
+  //   "class": string (category identifier, required),
+  //   "price": number (purchase price in dollars, required),
+  //   "stock": number (available stock count, optional, defaults to 0)
+  // }
+  {
+    "model": "police3",
+    "name": "Vapid Interceptor",
+    "class": "emergency",
+    "price": 0,
+    "stock": 10
+  },
+  {
+    "model": "sultanrs",
+    "name": "Karin Sultan RS",
+    "class": "sports",
+    "price": 125000,
+    "stock": 3
+  },
+  {
+    "model": "speedo",
+    "name": "Vapid Speedo",
+    "class": "commercial",
+    "price": 42000
+  }
+]

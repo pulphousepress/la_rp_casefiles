@@ -1,0 +1,23 @@
+[
+  // Schema: Array of faction objects describing in-game organizations.
+  // {
+  //   "id": string (unique faction identifier, required),
+  //   "name": string (display name, required),
+  //   "type": string (classification such as "government" or "civilian", required),
+  //   "color": string (RGB hex color used for UI, optional),
+  //   "permissions": array of strings (optional role permissions)
+  // }
+  {
+    "id": "lspd",
+    "name": "Los Santos Police Department",
+    "type": "government",
+    "color": "#1E90FF",
+    "permissions": ["issue_fines", "seize_evidence", "dispatch_access"]
+  },
+  {
+    "id": "weazel",
+    "name": "Weazel News",
+    "type": "civilian",
+    "permissions": ["broadcast_news"]
+  }
+]

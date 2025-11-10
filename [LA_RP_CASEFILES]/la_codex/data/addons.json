@@ -1,0 +1,13 @@
+[
+  // Schema: Optional list of addon resources that extend the codex.
+  // {
+  //   "name": string (display name for the addon, required),
+  //   "resource": string (resource name to ensure is started, required),
+  //   "description": string (short description of the addon, optional)
+  // }
+  {
+    "name": "Vehicle Livery Pack",
+    "resource": "la_codex_liveries",
+    "description": "Adds additional liveries for law enforcement vehicles."
+  }
+]

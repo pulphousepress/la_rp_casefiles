@@ -6,10 +6,44 @@
 
 ## Repository purpose
 
-* Central place for era rules and whitelists (vehicles, peds, items) used by multiple resources.
-* Shared data for pEditor, la_era_vehicles, la_npcs, la_radio, and other LA systems.
-* Copy/paste ready server snippets and recommended ensure order.
-* Contributor guidance and enforcement rules for keeping assets era-appropriate.
+* Serve as the canonical dataset for era policies, whitelists, and shared configuration consumed by Los Animales RP resources.
+* Document the runtime responsibilities of the new `la_core`-centric architecture.
+* Provide copy/paste ready server snippets and recommended ensure order for production and staging servers.
+* Centralize contributor guidance that keeps every dependent resource era-appropriate.
+
+---
+
+## Resource responsibilities under the new design
+
+### `la_codex`
+
+* Houses immutable data: era policies, vehicle/ped/item whitelists, shared JSON/Lua catalogs, and documentation.
+* Exposes codified datasets to `la_core` through file exports only—no gameplay logic or runtime state lives here.
+* Ship updates only when data changes; the package should not require a server restart for logic fixes because it must stay logic-free.
+
+### `la_core`
+
+* Primary API surface for the Los Animales ecosystem. All resources query codex data and shared state exclusively via `exports['la_core']` helpers.
+* Maintains cached, validated views of codex datasets and provides standardized query, filtering, and validation methods.
+* Owns common logging utilities and forwards structured log events (see "Logging conventions" below).
+
+### `la_engine`
+
+* Gameplay runtime and orchestration layer. Consumes `la_core` APIs to drive missions, jobs, spawn logic, and scheduling.
+* Never reads codex files directly; it only reacts to events and data served through `la_core`.
+* Emits operational metrics via the `la_core.logRuntime()` helper to ensure consistency with other resources.
+
+### `la_admin`
+
+* Administrative control plane used to register and manage addons.
+* Provides exports such as `registerAddon`, `setAddonState`, and `getAddonStatus`, all of which internally call `la_core` to resolve codex references and enforce policy.
+* Offers webhook/console logging for addon lifecycle events using the shared logging conventions.
+
+### Addon resources (within `[addons]/` or third-party)
+
+* Must depend on `la_core` and `la_admin` for data access and registration.
+* Implement their own gameplay logic but fetch codex-backed metadata exclusively with `exports['la_core']`.
+* During startup, call `exports['la_admin']:registerAddon({ ... })` to announce capabilities, whitelists they consume, and contact info for maintainers.
 
 ---
 
@@ -38,6 +72,55 @@ la_codex/
 ```
 
 Files in this repository are intended as data and policy only. Do not duplicate gameplay logic here. Reference these files from gameplay resources.
+
+---
+
+## Setup and integration basics
+
+1. **Install the core resources.** Place `la_codex`, `la_core`, `la_engine`, and `la_admin` inside `[LA_RP_CASEFILES]/` (or another shared folder) and ensure they are started before any dependent addons.
+2. **Query data through `la_core`.** Any resource that needs codex values must call the exported helpers:
+
+   ```lua
+   local codex = exports['la_core']
+   local vehicles = codex:getVehicleWhitelist()
+   local faction = codex:getFaction('lspd')
+   ```
+
+   Direct file reads from `la_codex` are not permitted. `la_core` maintains cache invalidation and format guarantees so downstream resources stay decoupled from raw files.
+
+3. **Register addons via `la_admin`.** During resource startup, register capabilities before using `la_core` data:
+
+   ```lua
+   AddEventHandler('onClientResourceStart', function(resourceName)
+       if resourceName ~= GetCurrentResourceName() then return end
+
+       exports['la_admin']:registerAddon({
+           name = 'la_radio_dispatch',
+           version = GetResourceMetadata(resourceName, 'version', 0),
+           maintainer = 'radio@losanimales.dev',
+           requires = {
+               codex = {'vehicles', 'factions'},
+               coreExports = {'getVehicleWhitelist', 'getFaction'}
+           }
+       })
+   end)
+   ```
+
+   `la_admin` will surface registration failures through structured logs and optional Discord/webhook alerts.
+
+4. **Addon data flow.** After registration, the addon uses `la_core` exports to fetch data, listens for `la_core:codexUpdated` events for invalidation, and sends admin actions (enable/disable) back through `la_admin`.
+
+5. **Server operators** should review the "Logging conventions" below and point all resources to a shared logging sink for consistent observability.
+
+---
+
+## Logging conventions
+
+* **Namespace format:** `[LA][<resource>][<context>] message`. Example: `[LA][la_core][CodexSync] Cache refreshed (vehicles=542, peds=318)`.
+* **Structured payloads:** When emitting JSON logs via `la_core.logStructured(event, payload)`, include `resource`, `level`, `version`, and `correlationId` fields.
+* **Log levels:** `trace`, `debug`, `info`, `warn`, `error`, `fatal`. Default to `info`; reserve `error` and higher for actionable failures.
+* **Cross-resource consistency:** Use `exports['la_core']:logRuntime(level, context, message, payload?)` from all resources (including addons) so logs include unified metadata and optional webhook forwarding.
+* **GDPR/PII caution:** Do not log player identifiers beyond server IDs unless you have explicit policy approval documented in `docs/`.
 
 ---
 
@@ -80,13 +163,18 @@ ensure screenshot-basic
 ensure npwd
 ensure qbx_npwd
 
-# Los Animales core / codex
-ensure la_core
-ensure la_codex
+# Los Animales codex + platform
+ensure la_codex        # data only
+ensure la_core         # centralized API, codex cache
+ensure la_engine       # gameplay runtime uses la_core
+ensure la_admin        # addon registry
+
+# First-party addons (must register through la_admin)
 ensure la_era_vehicles
 ensure la_npcs
 ensure la_peditor
-ensure la_admin
+# ensure la_radio_dispatch
+# ensure la_courthouse
 
 # Optional / experimental (keep after core)
 # ensure la_toonzone
@@ -133,9 +221,9 @@ If any step fails, check resource logs and verify file encoding and line endings
 
 ## Integration notes
 
-* `la_codex` is data only. Gameplay resources should import or query these files using `exports` or `oxmysql` rather than copying lists into code. This prevents drift and keeps a single source of truth.
-* pEditor expects the codex format described in `la_peditor_promt.txt`. Update pEditor only after confirming format compatibility.
-* Keep update frequency reasonable. Breaking whitelist format will cause startup errors across multiple LA resources.
+* `la_codex` is data only. Gameplay resources should never read its files directly—always depend on `exports['la_core']` for whitelists, factions, and policy lookups so cache invalidation remains centralized.
+* pEditor (and other first-party addons) should declare their data requirements when registering with `la_admin`, then call the specific `la_core` exports described in `la_peditor_promt.txt`.
+* Keep update frequency reasonable. Breaking whitelist format or `la_core` export contracts will cause startup errors across multiple LA resources.
 
 ---
 

@@ -2,8 +2,15 @@ fx_version 'cerulean'
 game 'gta5'
 
 name 'la_codex'
-description 'Los Animales RP codex — data only'
+description 'Los Animales RP codex — shared data accessors'
 
 lua54 'yes'
 
--- This resource contains only data tables and metadata.  There are no scripts.
+server_script 'server/main.lua'
+
+server_exports {
+    'GetCodexData',
+    'GetVehicleByModel',
+    'GetPedByModel',
+    'GetFactionById'
+}
