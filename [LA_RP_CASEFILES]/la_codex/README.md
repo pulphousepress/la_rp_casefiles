@@ -1,33 +1,82 @@
 # la_codex
 
-`la_codex` holds all static data for the Los Animales RP project.  It contains Lua tables for weather patterns, NPC spawn points, weather controller rules, and optional SQL seed data.  No code runs in this resource; everything is consumed via `la_core` exports.
+`la_codex` is the Los Animales source of truth for world data. It ships structured JSON files only—no gameplay logic—so that oth
+ers can load consistent definitions for vehicles, peds, factions, and future datasets.
 
-## Structure
+## Layout
 
 ```
 la_codex/
-├── fxmanifest.lua       # resource manifest (no scripts)
-├── version.lua          # version string for the codex
-├── manifest.lua         # lists available datasets and SQL seeds
-├── sets/                # Lua tables describing each dataset
-│   ├── weather.lua
-│   ├── npcs.lua
-│   └── weather_rules.lua
-└── sql/
-    └── seed.sql         # optional seed data for the database
+├── fxmanifest.lua          # declares server loader/export surface
+├── server/main.lua         # loads & validates JSON data, exposes exports
+├── data/
+│   ├── vehicles.json       # vehicle descriptors with era tags and faction gating
+│   ├── peds.json           # ped descriptors with categories
+│   ├── factions.json       # faction descriptors
+│   └── addons.json         # optional metadata describing addon packages
+└── README.md
 ```
 
-## Usage
+## JSON schemas
 
-1. Ensure `la_codex` is started before `la_core` in your `server.cfg`:
+Each JSON file may contain inline comments (`//` or `/* */`) which the loader strips before decoding. The loader validates base f
+ields and logs warnings tagged with `[la_codex]` when malformed entries are encountered.
 
-   ```cfg
-   ensure la_codex
-   ensure la_core
-   ```
+### `vehicles.json`
 
-2. Do not reference data files directly from gameplay code.  Always call `exports.la_core:GetData('weather')` or similar to obtain a deep copy.
+Array of objects:
 
-3. To add your own dataset, create a new file under `sets/`, update `manifest.lua`, and bump the version in `version.lua`.
+```jsonc
+{
+  "model": "speedo",            // spawn name (required)
+  "label": "Vapid Speedo",      // display label (required)
+  "era_tag": "universal",       // classification for admin filtering (required)
+  "type": "commercial",         // category such as emergency/civilian (required)
+  "allowed_factions": ["lapd"], // optional list of faction ids that may operate the vehicle
+  "notes": "context"            // optional maintainer note
+}
+```
 
-4. SQL seeds in `sql/` can be executed via an optional seed command in `la_core` if you implement it.
+### `peds.json`
+
+Array of objects:
+
+```jsonc
+{
+  "model": "s_m_y_cop_01",  // ped model (required)
+  "label": "Mission Row Patrol", // display label (required)
+  "category": "law",         // classification used by gating logic (required)
+  "notes": "optional notes"  // optional
+}
+```
+
+### `factions.json`
+
+Array of objects:
+
+```jsonc
+{
+  "id": "lapd",               // unique identifier (required)
+  "name": "Los Angeles Police Department", // display label (required)
+  "category": "law",          // classification used by systems (required)
+  "notes": "optional notes"   // optional
+}
+```
+
+### `addons.json`
+
+Optional array describing known addons. Fields are not enforced beyond being objects with `name` and `resource` strings so that
+maintainers can document packaged extensions.
+
+## Exports
+
+`server/main.lua` exposes the following server exports for consumption by `la_core` and tests:
+
+* `GetCodexData(dataType)` — returns the requested dataset (`"vehicles"`, `"peds"`, `"factions"`, or `"addons"`). When omitted,
+  the entire codex table is returned.
+* `GetVehicleByModel(model)` — returns the vehicle entry by spawn name.
+* `GetPedByModel(model)` — returns the ped entry by model.
+* `GetFactionById(id)` — returns the faction entry by id.
+
+These exports never mutate the underlying JSON. If you need to reload the codex at runtime, restart the resource or implement a
+trigger in `la_admin` that restarts it and notifies dependents.

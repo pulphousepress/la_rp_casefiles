@@ -1,10 +1,9 @@
--- la_core/config.lua — shared (no require, no return)
+-- la_core/config.lua
+-- Shared configuration for the core API layer.
+
 Config = {
-  Version      = '1.0.2',
-  EnableCore   = true,
-  Debug        = false,          -- set true for verbose logs
-  StatusCommand= 'la_status',
-  logger       = nil,            -- optional function(level, message, formatted)
-  CodexPath    = 'la_codex',     -- resource holding codex datasets
-  SyncToDB     = false           -- reserved
+    Version = '1.1.0',
+    Debug = false,
+    CodexResource = 'la_codex',
+    ReloadCommand = 'la_codex_reload',
 }

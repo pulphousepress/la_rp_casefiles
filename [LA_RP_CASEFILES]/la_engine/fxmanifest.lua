@@ -12,12 +12,13 @@ dependency 'la_core'
 shared_script 'config.lua'
 
 server_scripts {
-    'server/main.lua',
-    'server/modules/weather.lua'
+    'server/main.lua'
 }
 
 server_exports {
-    'GetAllowedVehicleModels'
+    'GetAllowedVehicleModels',
+    'IsVehicleAllowed',
+    'IsPedAllowed'
 }
 
 client_scripts {

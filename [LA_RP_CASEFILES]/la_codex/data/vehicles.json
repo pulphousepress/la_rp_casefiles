@@ -1,30 +1,34 @@
 [
-  // Schema: Array of vehicle definitions used by the codex database.
+  // Schema: Array of vehicle descriptors.
   // {
-  //   "model": string (vehicle spawn name, required),
-  //   "name": string (human readable label, required),
-  //   "class": string (category identifier, required),
-  //   "price": number (purchase price in dollars, required),
-  //   "stock": number (available stock count, optional, defaults to 0)
+  //   "model": string (spawn name, required),
+  //   "label": string (display label, required),
+  //   "era_tag": string (era classification such as "golden_age" or "modern"),
+  //   "type": string (category e.g. "emergency", "civilian", required),
+  //   "allowed_factions": string[] (optional list of faction ids permitted to operate the vehicle),
+  //   "notes": string (optional free-form notes)
   // }
   {
     "model": "police3",
-    "name": "Vapid Interceptor",
-    "class": "emergency",
-    "price": 0,
-    "stock": 10
+    "label": "Vapid Interceptor",
+    "era_tag": "mid_century",
+    "type": "emergency",
+    "allowed_factions": ["lapd", "black_paw"],
+    "notes": "Primary patrol vehicle for sanctioned law enforcement."
   },
   {
     "model": "sultanrs",
-    "name": "Karin Sultan RS",
-    "class": "sports",
-    "price": 125000,
-    "stock": 3
+    "label": "Karin Sultan RS",
+    "era_tag": "late_modern",
+    "type": "civilian",
+    "allowed_factions": ["dominion"],
+    "notes": "Limited run street car — restricted to Dominion storyline beats."
   },
   {
     "model": "speedo",
-    "name": "Vapid Speedo",
-    "class": "commercial",
-    "price": 42000
+    "label": "Vapid Speedo",
+    "era_tag": "universal",
+    "type": "commercial",
+    "notes": "Generic service van suitable for most neutral factions."
   }
 ]

@@ -11,9 +11,7 @@ dependency 'la_engine'
 shared_script 'config.lua'
 
 server_scripts {
-  'server/main.lua',
-  'server/registry.lua',
-  'addons/**/server.lua'   -- optional per-addon servers
+  'server/main.lua'
 }
 
 client_scripts {
@@ -29,7 +27,7 @@ files {
 }
 
 exports {
-  'RegisterAction',        -- exports['la_admin']:RegisterAction(tbl)
-  'RegisterCategory',      -- exports['la_admin']:RegisterCategory(id,label)
-  'GetActions'             -- table snapshot for other UIs
+  'RegisterAddon',
+  'GetRegisteredAddons',
+  'GetAddonsByCapability'
 }

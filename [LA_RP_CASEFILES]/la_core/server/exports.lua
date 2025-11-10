@@ -1,81 +1,135 @@
--- la_core/server/exports.lua — codex backed exports
+-- la_core/server/exports.lua
+-- All public exports that other resources consume.
 
 local state = rawget(_G, 'LA_CORE_STATE') or {}
-local RES = state.resource or GetCurrentResourceName()
+local datasets = state.codex and state.codex.datasets or {}
 
-local function ensureCached(name)
-  if type(state.cache) ~= 'table' then return {} end
-  local data = state.cache[name]
-  if type(data) ~= 'table' then
-    local ok, fetched = pcall(function()
-      return exports[RES]:GetData(name)
-    end)
-    if ok and type(fetched) == 'table' then
-      data = fetched
-    else
-      data = {}
+local function copyList(list)
+    if type(list) ~= 'table' then
+        return {}
     end
-    state.cache[name] = data
-  end
-  return data
-end
 
-local function getList(name)
-  local data = ensureCached(name)
-  if type(data) ~= 'table' then
-    return {}
-  end
-  return data
-end
-
-local function eachEntry(list, fn)
-  if type(list) ~= 'table' then return end
-  if list[1] ~= nil then
-    for _, entry in ipairs(list) do fn(entry) end
-  else
-    for _, entry in pairs(list) do fn(entry) end
-  end
-end
-
-local function findVehicle(query)
-  if query == nil then return nil end
-  local vehicles = getList('vehicles')
-  local idx = state.indices and state.indices.vehicles
-  local key
-  if type(query) == 'number' then
-    key = tostring(query)
-    if idx and idx[key] then return idx[key] end
-  end
-  key = tostring(query):lower()
-  if idx and idx[key] then return idx[key] end
-
-  local found
-  eachEntry(vehicles, function(entry)
-    if found or type(entry) ~= 'table' then return end
-    local model = entry.model and tostring(entry.model):lower()
-    local spawn = entry.spawn and tostring(entry.spawn):lower()
-    local name = entry.name and tostring(entry.name):lower()
-    local label = entry.label and tostring(entry.label):lower()
-    if model == key or spawn == key or name == key or label == key then
-      found = entry
+    local out = {}
+    for i = 1, #list do
+        out[i] = list[i]
     end
-  end)
+    return out
+end
 
-  return found
+local function ensureDataset(name)
+    datasets = (state.codex and state.codex.datasets) or datasets or {}
+    local data = datasets[name]
+    if type(data) ~= 'table' then
+        return {}
+    end
+    return data
+end
+
+local function normalize(value)
+    if type(value) == 'string' then
+        local trimmed = value:match('^%s*(.-)%s*$')
+        return trimmed:lower()
+    end
+    return value
+end
+
+local function valueInSet(value, set)
+    if type(set) ~= 'table' then
+        return false
+    end
+
+    for i = 1, #set do
+        if normalize(set[i]) == normalize(value) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function matchesVehicle(vehicle, filters)
+    if type(vehicle) ~= 'table' then
+        return false
+    end
+
+    if type(filters) ~= 'table' or next(filters) == nil then
+        return true
+    end
+
+    if filters.model then
+        local needle = normalize(filters.model)
+        local model = vehicle.model and normalize(vehicle.model)
+        if model ~= needle then
+            return false
+        end
+    end
+
+    if filters.label then
+        local needle = normalize(filters.label)
+        local label = vehicle.label and normalize(vehicle.label)
+        if label ~= needle then
+            return false
+        end
+    end
+
+    if filters.era_tag then
+        local target = normalize(filters.era_tag)
+        local tag = vehicle.era_tag and normalize(vehicle.era_tag)
+        if tag ~= target then
+            return false
+        end
+    end
+
+    if filters.type then
+        local desired = normalize(filters.type)
+        local vehicleType = vehicle.type and normalize(vehicle.type)
+        if vehicleType ~= desired then
+            return false
+        end
+    end
+
+    if filters.faction then
+        local faction = normalize(filters.faction)
+        local allowed = vehicle.allowed_factions
+        if type(allowed) == 'table' and #allowed > 0 then
+            if not valueInSet(faction, allowed) then
+                return false
+            end
+        end
+    end
+
+    return true
 end
 
 exports('GetVehicleList', function()
-  return getList('vehicles')
+    return copyList(ensureDataset('vehicles'))
 end)
 
 exports('GetPedList', function()
-  return getList('peds')
+    return copyList(ensureDataset('peds'))
 end)
 
 exports('GetFactionList', function()
-  return getList('factions')
+    return copyList(ensureDataset('factions'))
 end)
 
-exports('FindVehicle', function(query)
-  return findVehicle(query)
+exports('FindVehicle', function(filters)
+    local matches = {}
+    local vehicles = ensureDataset('vehicles')
+
+    for _, vehicle in ipairs(vehicles) do
+        if matchesVehicle(vehicle, filters) then
+            matches[#matches + 1] = vehicle
+        end
+    end
+
+    return matches
+end)
+
+exports('GetData', function(name)
+    if type(name) ~= 'string' or name == '' then
+        return nil
+    end
+
+    return copyList(ensureDataset(name))
 end)

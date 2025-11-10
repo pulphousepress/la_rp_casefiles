@@ -82,19 +82,30 @@ local function refreshAllowedModels()
 end
 
 local function registerWithAdmin()
-    local ok, err = pcall(function()
-        exports[ADMIN]:RegisterAddon({
+    local ok, success, descriptor = pcall(function()
+        return exports[ADMIN]:RegisterAddon({
             id = RESOURCE_NAME,
             name = 'Era Vehicle Extension',
             version = '1.0.0',
-            commands = { 'la_era_vehicles_ext_models' }
+            hooks = { 'onReady' },
+            provides = { 'vehicles', 'debug_commands' }
         })
     end)
 
-    if ok then
-        log(('Registered addon with %s'):format(ADMIN))
+    if not ok then
+        log(('Unable to register addon with %s: %s'):format(ADMIN, tostring(success)))
+        return
+    end
+
+    if success == false then
+        log(('Addon registration rejected by %s'):format(ADMIN))
+        return
+    end
+
+    if type(descriptor) == 'table' and descriptor.name then
+        log(('Registered addon with %s (%s)'):format(ADMIN, descriptor.name))
     else
-        log(('Unable to register addon with %s: %s'):format(ADMIN, tostring(err)))
+        log(('Registered addon with %s'):format(ADMIN))
     end
 end
 

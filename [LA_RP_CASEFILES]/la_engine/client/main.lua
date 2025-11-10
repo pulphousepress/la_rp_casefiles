@@ -1,4 +1,4 @@
-local Config = require 'config'
+local Config = Config or {}
 
 -- Simple client stub for la_engine.
 -- Use this to listen for ready events and log status.
