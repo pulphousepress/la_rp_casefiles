@@ -1,0 +1,12 @@
+[
+  {
+    "group_name": "roosevelt_classic",
+    "models": ["tornado", "peyote"],
+    "region": "city"
+  },
+  {
+    "group_name": "farm_vehicles",
+    "models": ["tractor", "dloader"],
+    "region": "rural"
+  }
+]

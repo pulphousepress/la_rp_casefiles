@@ -1,0 +1,121 @@
+/* ============================= */
+/*  RADIO CONTAINER ANCHOR       */
+/* ============================= */
+#radio {
+    position: fixed;
+    bottom: 5%;                  
+    left: 50%;
+    transform: translateX(-50%);
+    width: 340px;
+    height: 220px;
+    z-index: 100;
+
+    border: 2px dashed lime;     /* DEBUG outline */
+    background-color: rgba(0,255,0,0.05); /* faint green fill */
+}
+
+/* ============================= */
+/*  RADIO LAYERS (Dreamweaver)   */
+/* ============================= */
+
+#radioGlow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: auto;
+    z-index: 0;
+
+    border: 1px dashed yellow;   /* DEBUG */
+    background-color: rgba(255,255,0,0.05);
+}
+
+#radioChassis {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: auto;
+    z-index: 1;
+
+    border: 1px dashed orange;   /* DEBUG */
+    background-color: rgba(255,165,0,0.05);
+}
+
+#radioOverlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: auto;
+    z-index: 2;
+
+    border: 1px dashed red;      /* DEBUG */
+    background-color: rgba(255,0,0,0.05);
+}
+
+#dialTrack {
+    position: absolute;
+    bottom: 20px;
+    left: 60px;
+    width: 220px;
+    z-index: 1;
+
+    border: 1px dashed blue;     /* DEBUG */
+    background-color: rgba(0,0,255,0.05);
+}
+
+#dialIndicator {
+    position: absolute;
+    bottom: 12px;
+    left: 155px;
+    width: 10px;
+    z-index: 3;
+    min-height: 25px;
+    padding: 3px;
+    margin-bottom: 1px;
+
+    border: 1px dashed cyan;     /* DEBUG */
+    background-color: rgba(0,255,255,0.05);
+}
+
+/* ============================= */
+/*  KNOBS                        */
+/* ============================= */
+.knob {
+    position: absolute;
+    bottom: 20px;
+    width: 70px;
+    height: 70px;
+    z-index: 5;
+    cursor: pointer;
+
+    border: 1px dashed magenta;  /* DEBUG */
+    background-color: rgba(255,0,255,0.05);
+}
+#knobLeft {
+    left: 36px;
+    bottom: 40px;
+}
+#knobRight {
+    left: 236px;
+    bottom: 40px;
+}
+
+/* ============================= */
+/*  STATION TICKER               */
+/* ============================= */
+#stationText {
+    position: absolute;
+    width: 100%;
+    bottom: -25px;
+    text-align: center;
+    font-size: 16px;
+    font-family: "Courier New", monospace;
+    color: white;
+    text-shadow: 1px 1px 2px black;
+    z-index: 6;
+
+    border: 1px dashed white;    /* DEBUG */
+    background-color: rgba(255,255,255,0.05);
+}

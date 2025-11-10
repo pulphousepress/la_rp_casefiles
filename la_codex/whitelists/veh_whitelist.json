@@ -1,0 +1,18 @@
+[
+  {
+    "model": "tornado",
+    "year": 1959,
+    "category": "car",
+    "label": "Declasse Tornado",
+    "spawn_weight": 1
+  },
+  {
+    "model": "peyote",
+    "year": 1958,
+    "category": "car",
+    "label": "Vapid Peyote",
+    "spawn_weight": 1
+  },
+[
+  { "model": "btype", "label": "1930s Roadster", "year": 1935, "category": "classic", "spawn_weight": 10 },
+]

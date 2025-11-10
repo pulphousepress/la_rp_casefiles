@@ -1,0 +1,11 @@
+{
+  "assets": [
+    {
+      "name": "animals_pack",
+      "version": "1.0.0",
+      "description": "Anthropomorphic animal models",
+      "url": "https://example.com/los_animales/peds/animals_pack.zip",
+      "size": 123456789
+    }
+  ]
+}

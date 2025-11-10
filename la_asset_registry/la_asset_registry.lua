@@ -241,6 +241,10 @@ end)
 CreateThread(function()
     while true do
         Wait(300000)
+CreateThread(function()
+    while true do
+        Wait(300000)
+
         local now = GetGameTimer()
         for model, time in pairs(recentlyBlocked) do
             if now - time > 300000 then

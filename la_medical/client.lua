@@ -38,4 +38,9 @@ function MedicalClient.init(opts)
     return { ok = true }
 end
 
+    return { ok = true }
+end
+
+MedicalClient.init(Config)
+
 return MedicalClient

@@ -58,6 +58,47 @@ local function bootstrapTables()
         exports.oxmysql:execute([[CREATE INDEX idx_ped_category ON ped_whitelist (category);]])
     end
 
+
+local NPCServer = {}
+
+local function emitLog(level, message)
+    local msg = string.format("[la_npcs][%s] %s", level, message)
+    print(msg)
+    return msg
+end
+
+local function mergeConfig(opts)
+    if type(opts) ~= "table" then return end
+    for key, value in pairs(opts) do
+        Config[key] = value
+    end
+end
+
+local function bootstrapTables()
+    exports.oxmysql:execute([[ 
+        CREATE TABLE IF NOT EXISTS la_flags (
+            name VARCHAR(64) PRIMARY KEY,
+            value TINYINT(1) NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ]])
+
+    exports.oxmysql:execute([[ 
+        CREATE TABLE IF NOT EXISTS ped_whitelist (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            model VARCHAR(191) NOT NULL UNIQUE,
+            category VARCHAR(64),
+            label VARCHAR(191),
+            notes TEXT,
+            added_by VARCHAR(64),
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ]])
+
+    exports.oxmysql:execute([[ 
+        CREATE INDEX IF NOT EXISTS idx_ped_category ON ped_whitelist (category);
+    ]])
+
     emitLog("info", "DB bootstrap complete")
 end
 
@@ -203,6 +244,29 @@ function NPCServer.init(opts)
         return { ok = false, err = err }
     end
 
+
+local function registerCommands()
+    RegisterCommand("la_import_peds", function(source)
+        local isConsole = (source == 0)
+        local allowed = isConsole or IsPlayerAceAllowed(source, "la.npcsuite.admin") or IsPlayerAceAllowed(source, "admin")
+        if not allowed then
+            emitLog("warn", "Permission denied for /la_import_peds")
+            return
+        end
+
+        emitLog("info", "Manual import starting")
+        insertPeds(baseSeed, false)
+        local bulk = loadPedsJSON()
+        if #bulk > 0 then
+            emitLog("info", ("Importing %d peds from JSON"):format(#bulk))
+            insertPeds(bulk, false)
+        end
+        emitLog("info", "Manual import complete")
+    end, true)
+end
+
+function NPCServer.init(opts)
+    mergeConfig(opts)
     bootstrapTables()
     registerCallbacks()
     registerCommands()
@@ -220,5 +284,7 @@ function NPCServer.init(opts)
     emitLog("info", "v1.4.1 server module initialized")
     return { ok = true }
 end
+
+NPCServer.init(Config)
 
 return NPCServer
