@@ -12,6 +12,12 @@ local function emitLog(level, message)
     end
 end
 
+local function emitLog(level, message)
+    if Config.Debug then
+        print(string.format("[la_npcs][%s] %s", level, message))
+    end
+end
+
 local function count(tbl)
     local c = 0
     for _ in pairs(tbl) do c = c + 1 end
@@ -193,8 +199,24 @@ function NPCClient.init(opts)
     CreateThread(spawnLoop)
 
     initialized = true
+function NPCClient.init(opts)
+    if type(opts) == "table" then
+        for key, value in pairs(opts) do
+            Config[key] = value
+        end
+    end
+
+    if not loadPeds() then
+        return { ok = false, err = "Failed to load whitelist" }
+    end
+
+    CreateThread(filterLoop)
+    CreateThread(spawnLoop)
+
     emitLog("info", "Client NPC controller initialized")
     return { ok = true }
 end
+
+NPCClient.init(Config)
 
 return NPCClient

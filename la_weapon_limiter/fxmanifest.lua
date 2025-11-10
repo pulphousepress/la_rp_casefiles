@@ -12,5 +12,6 @@ server_scripts {
     'la_weapon_limiter.lua',
     'server/init.lua'
 }
+server_script 'la_weapon_limiter.lua'
 
 lua54 'yes'

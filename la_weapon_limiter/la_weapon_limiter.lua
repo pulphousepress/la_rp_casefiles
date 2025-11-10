@@ -50,6 +50,11 @@ local function stripWeapon(src, rawWeapon, displayName)
     if not xPlayer then return end
     local ok, has = pcall(function()
         return xPlayer:Search('count', rawWeapon)
+local function stripWeapon(src, weapon)
+    local xPlayer = exports.ox_inventory:GetPlayer(src)
+    if not xPlayer then return end
+    local ok, count = pcall(function()
+        return xPlayer:Search('count', weapon)
     end)
     if not ok then
         notify(src, 'Unable to verify weapon ownership', 'error')
@@ -58,6 +63,9 @@ local function stripWeapon(src, rawWeapon, displayName)
     if has and has > 0 then
         xPlayer:RemoveItem(rawWeapon, 1)
         notify(src, (displayName or rawWeapon) .. " removed due to job restriction.")
+    if type(count) == 'number' and count > 0 then
+        xPlayer:RemoveItem(weapon, 1)
+        notify(src, "That weapon is not authorized for your job.")
     end
 end
 
@@ -97,6 +105,12 @@ local function recheckInventory(_, newJob)
             if not isAllowed(newJob.name, weaponName) then
                 if Config.Mode == "strip" then
                     xPlayer:RemoveItem(item.name, 1)
+                    local amount = item.count or 1
+                    if amount > 0 then
+                        xPlayer:RemoveItem(weaponName, amount)
+                    else
+                        xPlayer:RemoveItem(weaponName, 1)
+                    end
                     notify(src, weaponName .. " removed due to job restriction.")
                 elseif Config.Mode == "warn" then
                     notify(src, weaponName .. " is not allowed for your job.", 'warning')
@@ -135,5 +149,17 @@ function WeaponLimiter.init(opts)
     initialized = true
     return { ok = true }
 end
+
+function WeaponLimiter.init(opts)
+    mergeConfig(opts)
+
+    RegisterNetEvent('ox_inventory:weaponEquipped', onWeaponEquipped)
+    RegisterNetEvent('QBCore:Server:OnJobUpdate', recheckInventory)
+
+    print('[la_weapon_limiter] enforcement mode: ' .. Config.Mode)
+    return { ok = true }
+end
+
+WeaponLimiter.init(Config)
 
 return WeaponLimiter

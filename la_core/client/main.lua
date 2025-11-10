@@ -1,4 +1,8 @@
-local Config = require("config")
+-- client/main.lua (la_core client helper)
+-- Local state only, no globals
+local client = {}
+local isAppearanceOpen = false
+local lastCodexVersion = "unknown"
 
 local CoreClient = {}
 local initialized = false
@@ -35,6 +39,7 @@ function CoreClient.init(opts)
     if not ok then
         return { ok = false, err = err }
     end
+end)
 
     mergeConfig(opts)
 
@@ -48,5 +53,18 @@ function CoreClient.init(opts)
 
     return { ok = true, command = commandName }
 end
+-- NUI callback handler (if you implement NUI)
+RegisterNUICallback("close", function(data, cb)
+    closeAppearance()
+    cb({ ok = true })
+end)
 
-return CoreClient
+-- Exported functions for other client resources
+exports("IsAppearanceOpen", function() return isAppearanceOpen end)
+exports("ToggleAppearance", function() return client.toggleAppearance() end)
+
+-- Client ready message
+CreateThread(function()
+    Wait(500) -- give some time for resource startup
+    dbg("client helper ready")
+end)

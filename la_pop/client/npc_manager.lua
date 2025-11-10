@@ -30,6 +30,8 @@ RegisterNetEvent('la_population:spawnNPC', function(id, data)
     local modelHash = resolveModel(data.model)
     RequestModel(modelHash)
     while not HasModelLoaded(modelHash) do Wait(0) end
+    local modelHash = joaat(data.model)
+    RequestModel(modelHash); while not HasModelLoaded(modelHash) do Wait(0) end
     local ped = CreatePed(4, modelHash, data.coords.x, data.coords.y, data.coords.z, data.heading, true, true)
     SetEntityAsMissionEntity(ped, true, true)
     SetEntityInvincible(ped, true)
@@ -82,6 +84,11 @@ RegisterNetEvent('la_population:startPatrol', function(id, data)
     while not HasModelLoaded(driverModel) or not HasModelLoaded(partnerModel) or not HasModelLoaded(vehicleModel) do
         Wait(0)
     end
+    local driverModel = joaat(data.model)
+    local partnerModel = joaat(data.partner)
+    local vehicleModel = joaat(data.vehicle)
+    RequestModel(driverModel); RequestModel(partnerModel); RequestModel(vehicleModel)
+    while not HasModelLoaded(driverModel) or not HasModelLoaded(partnerModel) or not HasModelLoaded(vehicleModel) do Wait(0) end
     local veh = CreateVehicle(vehicleModel, data.coords.x, data.coords.y, data.coords.z, data.heading, true, false)
     SetVehicleOnGroundProperly(veh)
     SetVehicleEngineOn(veh, true, true, false)
