@@ -237,12 +237,15 @@ exports('AddJobWhitelist', function(name)
     table.insert(Config.WhitelistedJobs, name)
 end)
 
--- Cleanup old block cache
-SetInterval(function()
-    local now = GetGameTimer()
-    for model, time in pairs(recentlyBlocked) do
-        if now - time > 300000 then
-            recentlyBlocked[model] = nil
+CreateThread(function()
+    while true do
+        Wait(300000)
+
+        local now = GetGameTimer()
+        for model, time in pairs(recentlyBlocked) do
+            if now - time > 300000 then
+                recentlyBlocked[model] = nil
+            end
         end
     end
-end, 300000)
+end)
