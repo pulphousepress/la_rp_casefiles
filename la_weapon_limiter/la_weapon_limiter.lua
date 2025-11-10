@@ -2,12 +2,17 @@ local Config = require("config")
 local SharedStore = require("ph_shared").new("la_weapon_limiter")
 
 local WeaponLimiter = {}
+local initialized = false
 
 local function mergeConfig(opts)
     if type(opts) ~= 'table' then return end
     for key, value in pairs(opts) do
         Config[key] = value
     end
+end
+
+local function emitLog(level, message)
+    print(string.format("[la_weapon_limiter][%s] %s", level, message))
 end
 
 local function notify(source, msg, kind)
@@ -40,6 +45,11 @@ local function isAllowed(job, weapon)
     return allowed
 end
 
+local function stripWeapon(src, rawWeapon, displayName)
+    local xPlayer = exports.ox_inventory:GetPlayer(src)
+    if not xPlayer then return end
+    local ok, has = pcall(function()
+        return xPlayer:Search('count', rawWeapon)
 local function stripWeapon(src, weapon)
     local xPlayer = exports.ox_inventory:GetPlayer(src)
     if not xPlayer then return end
@@ -50,6 +60,9 @@ local function stripWeapon(src, weapon)
         notify(src, 'Unable to verify weapon ownership', 'error')
         return
     end
+    if has and has > 0 then
+        xPlayer:RemoveItem(rawWeapon, 1)
+        notify(src, (displayName or rawWeapon) .. " removed due to job restriction.")
     if type(count) == 'number' and count > 0 then
         xPlayer:RemoveItem(weapon, 1)
         notify(src, "That weapon is not authorized for your job.")
@@ -74,7 +87,7 @@ local function onWeaponEquipped(weapon)
             notify(src, "❌ Weapon blocked: not allowed for your job.")
             CancelEvent()
         elseif Config.Mode == "strip" then
-            stripWeapon(src, weaponName)
+            stripWeapon(src, weapon, weaponName)
         end
     end
 end
@@ -91,6 +104,7 @@ local function recheckInventory(_, newJob)
             local weaponName = string.upper(item.name)
             if not isAllowed(newJob.name, weaponName) then
                 if Config.Mode == "strip" then
+                    xPlayer:RemoveItem(item.name, 1)
                     local amount = item.count or 1
                     if amount > 0 then
                         xPlayer:RemoveItem(weaponName, amount)
@@ -104,6 +118,36 @@ local function recheckInventory(_, newJob)
             end
         end
     end
+end
+
+local function ensureDependencies()
+    if not exports or not exports.ox_inventory then
+        return false, 'ox_inventory export not found'
+    end
+    if type(RegisterNetEvent) ~= 'function' then
+        return false, 'RegisterNetEvent missing'
+    end
+    return true
+end
+
+function WeaponLimiter.init(opts)
+    if initialized then
+        return { ok = true, alreadyInitialized = true }
+    end
+
+    mergeConfig(opts)
+
+    local ok, err = ensureDependencies()
+    if not ok then
+        return { ok = false, err = err }
+    end
+
+    RegisterNetEvent('ox_inventory:weaponEquipped', onWeaponEquipped)
+    RegisterNetEvent('QBCore:Server:OnJobUpdate', recheckInventory)
+
+    emitLog('info', 'enforcement mode: ' .. Config.Mode)
+    initialized = true
+    return { ok = true }
 end
 
 function WeaponLimiter.init(opts)

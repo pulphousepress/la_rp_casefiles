@@ -1,6 +1,7 @@
 local Config = require("config")
 
 local MedicalClient = {}
+local initialized = false
 
 local function mergeConfig(opts)
     if type(opts) ~= 'table' then return end
@@ -20,6 +21,10 @@ local function revivePlayer()
 end
 
 function MedicalClient.init(opts)
+    if initialized then
+        return { ok = true, alreadyInitialized = true }
+    end
+
     mergeConfig(opts)
 
     AddEventHandler('baseevents:onPlayerDied', function()
@@ -28,6 +33,10 @@ function MedicalClient.init(opts)
         Wait(1500)
         revivePlayer()
     end)
+
+    initialized = true
+    return { ok = true }
+end
 
     return { ok = true }
 end

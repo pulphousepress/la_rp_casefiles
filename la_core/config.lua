@@ -1,3 +1,9 @@
+local Config = {
+    EnableCore = true,
+    Debug = false,
+    StatusCommand = "la_status",
+    logger = nil
+}
 -- la_core config
 local Config = {}
 

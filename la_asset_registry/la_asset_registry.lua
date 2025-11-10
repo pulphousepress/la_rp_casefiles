@@ -237,6 +237,10 @@ exports('AddJobWhitelist', function(name)
     table.insert(Config.WhitelistedJobs, name)
 end)
 
+-- Cleanup old block cache
+CreateThread(function()
+    while true do
+        Wait(300000)
 CreateThread(function()
     while true do
         Wait(300000)

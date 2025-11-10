@@ -1,5 +1,12 @@
 local NPCs, patrolVehicles = {}, {}
 
+local function resolveModel(model)
+    if type(model) == 'number' then
+        return model
+    end
+    return joaat(model)
+end
+
 -- Force to ground
 local function ForceGroundAlign(entity)
     local pos = GetEntityCoords(entity)
@@ -18,6 +25,9 @@ end
 RegisterNetEvent('la_population:spawnNPC', function(id, data)
     if data.vehicle then return end
     if NPCs[id] and DoesEntityExist(NPCs[id]) then DeletePed(NPCs[id]) end
+    local modelHash = resolveModel(data.model)
+    RequestModel(modelHash)
+    while not HasModelLoaded(modelHash) do Wait(0) end
     local modelHash = joaat(data.model)
     RequestModel(modelHash); while not HasModelLoaded(modelHash) do Wait(0) end
     local ped = CreatePed(4, modelHash, data.coords.x, data.coords.y, data.coords.z, data.heading, true, true)
@@ -62,6 +72,16 @@ end)
 -- PATROL UNIT
 RegisterNetEvent('la_population:startPatrol', function(id, data)
     if patrolVehicles[id] then TriggerEvent('la_population:removeNPC', id) end
+    local driverModel = resolveModel(data.model)
+    local partnerModel = resolveModel(data.partner)
+    local vehicleModel = resolveModel(data.vehicle)
+
+    RequestModel(driverModel)
+    RequestModel(partnerModel)
+    RequestModel(vehicleModel)
+    while not HasModelLoaded(driverModel) or not HasModelLoaded(partnerModel) or not HasModelLoaded(vehicleModel) do
+        Wait(0)
+    end
     local driverModel = joaat(data.model)
     local partnerModel = joaat(data.partner)
     local vehicleModel = joaat(data.vehicle)
