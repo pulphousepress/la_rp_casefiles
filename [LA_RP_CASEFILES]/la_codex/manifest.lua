@@ -1,7 +1,7 @@
 -- Manifest describing the available datasets within la_codex.
--- Data sets are static Lua tables under `sets/`.  SQL seeds live under `sql/`.
+-- Data sets are static Lua tables under `sets/`. SQL seeds live under `sql/`.
 return {
-    version = require((...):gsub('manifest$', 'version')),
+    version = "1.0.0",  -- static version string
     sets = {
         weather         = 'sets/weather.lua',
         npcs            = 'sets/npcs.lua',
