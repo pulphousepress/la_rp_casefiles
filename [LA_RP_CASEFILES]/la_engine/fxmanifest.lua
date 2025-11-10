@@ -16,6 +16,10 @@ server_scripts {
     'server/modules/weather.lua'
 }
 
+server_exports {
+    'GetAllowedVehicleModels'
+}
+
 client_scripts {
     'client/main.lua',
     'client/modules/weather.lua'
